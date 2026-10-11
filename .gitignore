@@ -1,0 +1,13 @@
+__pycache__/
+.venv/
+.vscode/
+.idea/
+.mypy_cache/
+.ruff_cache/
+logs/
+*.py[cod]
+mimo.command
+.DS_Store
+saves/
+output/
+temp/

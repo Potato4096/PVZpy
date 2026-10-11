@@ -1,0 +1,53 @@
+{
+    "part": 1,
+    "level": 1,
+    "title": "第 1 关",
+    "type": "Day",
+    "rows": [
+        0,
+        0,
+        1,
+        0,
+        0
+    ],
+    "DefaultPlants": [
+        "PeaShooter"
+    ],
+    "AllowSelectPlant": false,
+    "DefaultSun": 100,
+    "ZombieTypes": [
+        "NormalZombie"
+    ],
+    "Waves": [
+        {
+            "delay": 300,
+            "row": 3,
+            "count": 1,
+            "type": "NormalZombie"
+        },
+        {
+            "delay": 300,
+            "row": 3,
+            "count": 1,
+            "type": "NormalZombie"
+        },
+        {
+            "delay": 300,
+            "row": 3,
+            "count": 1,
+            "type": "NormalZombie"
+        },
+        {
+            "delay": 300,
+            "row": 3,
+            "count": 1,
+            "type": "NormalZombie"
+        },
+        {
+            "delay": 30,
+            "row": 3,
+            "count": 1,
+            "type": "NormalZombie"
+        }
+    ]
+}
