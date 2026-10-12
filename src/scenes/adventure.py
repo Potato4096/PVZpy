@@ -2,6 +2,7 @@
 
 import logging
 import random
+from enum import Enum, auto
 
 import pygame
 
@@ -14,6 +15,14 @@ from src.Entities.loader import (
 )
 from src.Entities.Sun import Sun
 from src.levels_manager import Level, LevelWave, resolve_zombie_class
+
+
+class GameState(Enum):
+    """对局状态机：进行中 / 胜利 / 失败。"""
+
+    PLAYING = auto()
+    WIN = auto()
+    LOSE = auto()
 
 
 class AdventureScene(scene_manager.Scene):
@@ -36,7 +45,7 @@ class AdventureScene(scene_manager.Scene):
         self.level_title = ""
         self.map_type = const.MAP_DAY
         self.row_types: list[int] = [const.ROW_LAWN] * const.GRID_ROWS
-        self.game_state = "playing"  # playing | win | lose
+        self.game_state = GameState.PLAYING
         self.waves: list = []
         self.wave_index = 0
         self.next_wave_at = 0.0  # 下一波出现时刻（秒，自关卡开始）
@@ -85,7 +94,7 @@ class AdventureScene(scene_manager.Scene):
         self.selected_zombie_index = 0
         self.elapsed = 0.0
         self.next_sun_at = 5.0
-        self.game_state = "playing"
+        self.game_state = GameState.PLAYING
         self.wave_index = 0
         self.next_wave_at = 0.0
 
@@ -111,11 +120,7 @@ class AdventureScene(scene_manager.Scene):
 
         self.status_text = "左键种植/收阳光；波次自动刷怪；ESC 返回"
         if self.waves:
-            first = self.waves[0]
-            first_delay = (
-                first.delay_seconds if isinstance(first, LevelWave) else float(first[0])
-            )
-            self.next_wave_at = first_delay
+            self.next_wave_at = self.waves[0].delay_seconds
         logging.info(
             "AdventureScene 进入: plants=%s zombies=%s bullets=%s sun=%d level=%s waves=%d next_wave_at=%.2fs",
             [c.__name__ for c in self.plant_classes],
@@ -248,7 +253,7 @@ class AdventureScene(scene_manager.Scene):
 
     def handle_event(self, event: pygame.event.Event) -> None:
         # 对局结束后：任意点击/按键回菜单
-        if self.game_state != "playing":
+        if self.game_state != GameState.PLAYING:
             if event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONUP):
                 logging.info("AdventureScene %s 后返回菜单", self.game_state)
                 self.context.scene_manager.switch_to(const.SCENE_MAIN_MENU)
@@ -314,7 +319,7 @@ class AdventureScene(scene_manager.Scene):
             self.spawn_zombie(row, x=x)
 
     def update(self, dt: float) -> None:
-        if self.game_state != "playing":
+        if self.game_state != GameState.PLAYING:
             return
         self.elapsed += dt
         self._try_spawn_waves()
@@ -331,12 +336,7 @@ class AdventureScene(scene_manager.Scene):
             if self.elapsed < self.next_wave_at:
                 break
             wave = self.waves[self.wave_index]
-            if isinstance(wave, LevelWave):
-                count, row, ztype = wave.count, wave.row, wave.zombie_type
-            else:
-                # 兼容旧 (秒, count, row)：delay 为相对间隔
-                count, row = wave[1], wave[2]
-                ztype = None
+            count, row, ztype = wave.count, wave.row, wave.zombie_type
             zombie_cls = resolve_zombie_class(ztype) or self.selected_zombie_class()
             valid = self.spawnable_rows()
             for _ in range(int(count)):
@@ -368,12 +368,7 @@ class AdventureScene(scene_manager.Scene):
             # 下一波：相对当前波次结束时刻 + 下一波的 delay 间隔
             if self.wave_index < len(self.waves):
                 nxt = self.waves[self.wave_index]
-                gap = (
-                    nxt.delay_seconds
-                    if isinstance(nxt, LevelWave)
-                    else float(nxt[0])
-                )
-                self.next_wave_at = self.elapsed + gap
+                self.next_wave_at = self.elapsed + nxt.delay_seconds
 
     def _cleanup_offscreen(self) -> None:
         margin = 80
@@ -390,13 +385,13 @@ class AdventureScene(scene_manager.Scene):
     def _check_end(self) -> None:
         for z in list(self.em.zombies):
             if z.x < const.LOSE_X:
-                self.game_state = "lose"
+                self.game_state = GameState.LOSE
                 self.status_text = "僵尸突破防线！任意键返回"
                 logging.info("判负: 僵尸越过 LOSE_X=%s", const.LOSE_X)
                 return
         waves_done = self.wave_index >= len(self.waves)
         if waves_done and not any(self.em.zombies):
-            self.game_state = "win"
+            self.game_state = GameState.WIN
             next_lv = self.context.levels.next_level(self.level)
             if next_lv is not None:
                 self.status_text = f"关卡胜利！下一关 {next_lv.title}"
@@ -597,14 +592,14 @@ class AdventureScene(scene_manager.Scene):
             surf, _ = self.font.render(self.status_text, const.UI_TEXT, size=16)
             screen.blit(surf, surf.get_rect(midbottom=(const.SCREEN_WIDTH // 2, const.SCREEN_HEIGHT - 12)))
 
-        if self.game_state != "playing":
+        if self.game_state != GameState.PLAYING:
             self._draw_end_overlay(screen)
 
     def _draw_end_overlay(self, screen: pygame.Surface) -> None:
         overlay = pygame.Surface((const.SCREEN_WIDTH, const.SCREEN_HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 160))
         screen.blit(overlay, (0, 0))
-        if self.game_state == "win":
+        if self.game_state == GameState.WIN:
             text, color = "YOU WIN!", (120, 220, 120)
         else:
             text, color = "THE ZOMBIES ATE YOUR BRAINS", (220, 100, 90)
