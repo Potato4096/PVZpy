@@ -8,7 +8,7 @@ GLOBAL_REFERENCE。本模块仅做类型引用（TYPE_CHECKING），不导入任
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from src import (
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         saves_manager,
         scene_manager,
     )
+    from src.mod import event_bus, mod_manager, registry
 
 
 @dataclass
@@ -35,3 +36,8 @@ class GameContext:
     levels: levels_manager.LevelsManager
     saves: saves_manager.SavesManager
     scene_manager: scene_manager.SceneManager
+
+    # ---- M2 新增：mod 系统引用（向后兼容，未接入时默认 None） ----
+    mod_manager: Optional["mod_manager.ModManager"] = None
+    event_bus: Optional["event_bus.EventBus"] = None
+    registry: Optional["registry.Registry"] = None

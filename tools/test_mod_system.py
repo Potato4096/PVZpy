@@ -27,6 +27,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.mod.event_bus import EventBus  # noqa: E402
+from src.mod import events  # noqa: E402
 from src.mod.loader import (  # noqa: E402
     ModLoadError,
     find_mod_dirs,
@@ -41,6 +42,7 @@ from src.mod.mod_manager import (  # noqa: E402
     ModManager,
 )
 from src.mod.registry import Registry  # noqa: E402
+from src.context import GameContext  # noqa: E402
 
 
 SAMPLE_MOD_JSON = {
@@ -338,6 +340,74 @@ class TestModManagerBoot(TempModsMixin, unittest.TestCase):
         manager = ModManager(empty)
         manager.boot()
         self.assertEqual([e.id for e in manager.loaded], [BUILTIN_PVZPY_ID])
+
+
+class TestM2EventsAndContext(unittest.TestCase):
+    """M2：生命周期事件常量与 GameContext 注入。"""
+
+    def test_lifecycle_event_constants(self):
+        self.assertEqual(events.GAME_PRE_INIT, "game_pre_init")
+        self.assertEqual(events.GAME_START, "game_start")
+        self.assertEqual(events.GAME_FRAME, "game_frame")
+        self.assertEqual(events.GAME_STOP, "game_stop")
+
+    def test_event_payloads_exist(self):
+        for payload_cls in (
+            events.GamePreInitPayload,
+            events.GameStartPayload,
+            events.GameFramePayload,
+            events.GameStopPayload,
+        ):
+            payload = payload_cls()
+            self.assertIsNotNone(payload)
+
+    def test_context_backward_compatible_defaults(self):
+        # 不传 mod 字段仍可构造（M2 前代码不受影响）
+        ctx = GameContext(
+            game=object(),
+            assets=object(),
+            entities=object(),
+            levels=object(),
+            saves=object(),
+            scene_manager=object(),
+        )
+        self.assertIsNone(ctx.mod_manager)
+        self.assertIsNone(ctx.event_bus)
+        self.assertIsNone(ctx.registry)
+
+    def test_context_mod_fields_injected(self):
+        manager = ModManager(Path(tempfile.mkdtemp()) / "mods")
+        manager.boot()
+        ctx = GameContext(
+            game=object(),
+            assets=object(),
+            entities=object(),
+            levels=object(),
+            saves=object(),
+            scene_manager=object(),
+            mod_manager=manager,
+            event_bus=manager.event_bus,
+            registry=manager.registry,
+        )
+        self.assertIs(ctx.mod_manager, manager)
+        self.assertIs(ctx.event_bus, manager.event_bus)
+        self.assertIs(ctx.registry, manager.registry)
+
+    def test_bus_publish_exception_can_be_caught(self):
+        # mod 事件处理器抛异常时，外层 try/except（游戏 _publish_safe 同款）
+        # 可捕获，不拖垮本体逻辑。
+        bus = EventBus()
+
+        def boom(_payload):
+            raise RuntimeError("mod broken")
+
+        bus.subscribe(events.GAME_FRAME, boom)
+        try:
+            bus.publish(events.GAME_FRAME, events.GameFramePayload())
+        except RuntimeError:
+            pass
+        else:  # pragma: no cover
+            self.fail("事件处理器异常应向外传播以被保护层捕获")
 
 
 if __name__ == "__main__":

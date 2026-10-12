@@ -4,6 +4,7 @@ from datetime import datetime
 import colorlog
 
 from src import const, game
+from src.mod.mod_manager import ModManager
 
 FULL_NAME = "Plants vs. Zombies Python Edition"
 VERSION = "v0.0.1-dev"
@@ -73,8 +74,15 @@ def main() -> None:
     logging.info("{} v{}".format(FULL_NAME, VERSION))
     logging.info("Powered By Github@Potato4096")
 
+    # M2：启动时创建全局 ModManager 并 boot（mods_dir 指向项目根 mods/，
+    # 不存在则创建），随后注入 GameContext 供 mod 系统使用。
+    mods_dir = const.PROJECT_ROOT / "mods"
+    mods_dir.mkdir(parents=True, exist_ok=True)
+    mod_manager = ModManager(mods_dir=mods_dir)
+    mod_manager.boot()
+
     # 初始化并运行游戏；依赖经 GameContext 显式注入下游
-    game.Game().run()
+    game.Game(mod_manager=mod_manager).run()
 
 
 if __name__ == "__main__":
