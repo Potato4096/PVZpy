@@ -1,10 +1,19 @@
-# 资源 key 与场景名常量。路径相对项目 cwd（posix）。
+# 资源 key 与场景名常量。资源 key 为相对项目根的 posix 路径，
+# 文件系统路径统一基于 PROJECT_ROOT 构造，不依赖进程 cwd。
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 ASSETS_ROOT = "assets"
 LEVELS_ROOT = "src/Levels"
 IMAGES = f"{ASSETS_ROOT}/images"
 AUDIO_SFX = f"{ASSETS_ROOT}/audio/sfx"
 FONTS = f"{ASSETS_ROOT}/fonts"
+
+# 文件系统目录（基于项目根）
+ASSETS_DIR = PROJECT_ROOT / ASSETS_ROOT
+LEVELS_DIR = PROJECT_ROOT / LEVELS_ROOT
+SAVES_DIR = PROJECT_ROOT / "saves"
 
 FONT_PVZ = f"{FONTS}/pvz2.ttf"
 SFX_BUTTON_CLICK = f"{AUDIO_SFX}/buttonclick.ogg"

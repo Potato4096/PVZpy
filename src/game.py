@@ -31,9 +31,9 @@ class Game:
         GLOBAL_REFERENCE.SceneManager = scene_manager.SceneManager()
         GLOBAL_REFERENCE.SavesManager = saves_manager.SavesManager()
 
-        GLOBAL_REFERENCE.AssetsManager.load_all(Path("assets"))
-        GLOBAL_REFERENCE.LevelsManager.load_all(Path(const.LEVELS_ROOT))
-        GLOBAL_REFERENCE.SavesManager.load_all(Path("saves"))
+        GLOBAL_REFERENCE.AssetsManager.load_all(const.ASSETS_DIR)
+        GLOBAL_REFERENCE.LevelsManager.load_all(const.LEVELS_DIR)
+        GLOBAL_REFERENCE.SavesManager.load_all(const.SAVES_DIR)
 
         register_builtin_scenes(GLOBAL_REFERENCE.SceneManager)
 

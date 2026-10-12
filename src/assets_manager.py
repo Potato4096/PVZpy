@@ -4,6 +4,8 @@ from pathlib import Path
 import pygame
 import pygame.freetype
 
+from src import const
+
 
 def _default_surface():
     # 占位图：紫黑棋盘格
@@ -17,8 +19,7 @@ def _default_surface():
 def _default_font():
     # 本机 SysFont 可能异常，优先用项目字体文件
     candidates = [
-        Path("assets/fonts/pvz2.ttf"),
-        Path(__file__).resolve().parents[1] / "assets/fonts/pvz2.ttf",
+        const.PROJECT_ROOT / "assets/fonts/pvz2.ttf",
         Path("C:/Windows/Fonts/segoeui.ttf"),
         Path("C:/Windows/Fonts/arial.ttf"),
         Path("C:/Windows/Fonts/msyh.ttc"),
@@ -38,10 +39,10 @@ def _default_font():
 
 
 def _asset_key(asset: Path) -> str:
-    # 资源 key：相对 cwd 的 posix 路径
+    # 资源 key：相对项目根的 posix 路径，与 cwd 解耦
     resolved = asset.resolve()
     try:
-        return resolved.relative_to(Path.cwd()).as_posix()
+        return resolved.relative_to(const.PROJECT_ROOT).as_posix()
     except ValueError:
         return resolved.as_posix()
 

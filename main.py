@@ -1,8 +1,8 @@
 import logging
 import colorlog
-from pathlib import Path
 from datetime import datetime
 
+from src import const
 from src import game
 from src import GLOBAL_REFERENCE
 
@@ -40,7 +40,7 @@ FILE_LOG_FORMAT = logging.Formatter(
     '[%(asctime)s][%(module)s][%(levelname)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
-FILE_LOG_DIRECTORY = Path("logs")
+FILE_LOG_DIRECTORY = const.PROJECT_ROOT / "logs"
 FILE_LOG_PATH = FILE_LOG_DIRECTORY / (datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".log")
 
 def main():
