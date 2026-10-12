@@ -1,10 +1,9 @@
-from pathlib import Path
+"""游戏主循环：初始化 Pygame 与全部管理器，构造 GameContext 并向下注入。"""
 
 import pygame
 import pygame.freetype
 
 from src import (
-    GLOBAL_REFERENCE,
     assets_manager,
     const,
     entities_manager,
@@ -12,6 +11,7 @@ from src import (
     saves_manager,
     scene_manager,
 )
+from src.context import GameContext
 from src.scenes import register_builtin_scenes
 
 
@@ -25,21 +25,24 @@ class Game:
         self.clock = pygame.time.Clock()
         self.running = True
 
-        GLOBAL_REFERENCE.AssetsManager = assets_manager.AssetsManager()
-        GLOBAL_REFERENCE.EntitiesManager = entities_manager.EntitiesManager()
-        GLOBAL_REFERENCE.LevelsManager = levels_manager.LevelsManager()
-        GLOBAL_REFERENCE.SceneManager = scene_manager.SceneManager()
-        GLOBAL_REFERENCE.SavesManager = saves_manager.SavesManager()
+        # 构造应用上下文：显式持有各管理器与场景管理器，向下游依赖注入
+        self.context = GameContext(
+            game=self,
+            assets=assets_manager.AssetsManager(),
+            entities=entities_manager.EntitiesManager(),
+            levels=levels_manager.LevelsManager(),
+            saves=saves_manager.SavesManager(),
+            scene_manager=scene_manager.SceneManager(),
+        )
+        self.context.assets.load_all(const.ASSETS_DIR)
+        self.context.levels.load_all(const.LEVELS_DIR)
+        self.context.saves.load_all(const.SAVES_DIR)
 
-        GLOBAL_REFERENCE.AssetsManager.load_all(const.ASSETS_DIR)
-        GLOBAL_REFERENCE.LevelsManager.load_all(const.LEVELS_DIR)
-        GLOBAL_REFERENCE.SavesManager.load_all(const.SAVES_DIR)
-
-        register_builtin_scenes(GLOBAL_REFERENCE.SceneManager)
+        register_builtin_scenes(self.context)
 
     @property
     def current_scene(self) -> scene_manager.Scene | None:
-        return GLOBAL_REFERENCE.SceneManager.get_current_scene()
+        return self.context.scene_manager.get_current_scene()
 
     def run(self) -> None:
         while self.running:
@@ -47,7 +50,7 @@ class Game:
             self.event_loop()
             self.update(dt)
             self.draw(self.screen)
-        GLOBAL_REFERENCE.SavesManager.save()
+        self.context.saves.save()
         pygame.quit()
 
     def event_loop(self) -> None:
@@ -55,12 +58,12 @@ class Game:
             if event.type == pygame.QUIT:
                 self.running = False
                 continue
-            GLOBAL_REFERENCE.SceneManager.handle_event(event)
+            self.context.scene_manager.handle_event(event)
 
     def update(self, dt: float) -> None:
-        GLOBAL_REFERENCE.SceneManager.update(dt)
+        self.context.scene_manager.update(dt)
 
     def draw(self, screen: pygame.Surface) -> None:
         screen.fill((0, 0, 0))
-        GLOBAL_REFERENCE.SceneManager.draw(screen)
+        self.context.scene_manager.draw(screen)
         pygame.display.flip()

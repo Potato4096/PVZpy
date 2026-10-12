@@ -2,14 +2,15 @@
 
 import pygame
 
-from src import GLOBAL_REFERENCE, const, scene_manager
+from src import const, scene_manager
+from src.context import GameContext
 
 
 class LoadingScene(scene_manager.Scene):
     NAME = const.SCENE_LOADING
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, context: GameContext) -> None:
+        super().__init__(context)
         self.elapsed = 0.0
         self.duration = 1.2
         self.bar = pygame.Rect(200, 340, 400, 28)
@@ -31,7 +32,7 @@ class LoadingScene(scene_manager.Scene):
     def update(self, dt: float) -> None:
         self.elapsed += dt
         if self.elapsed >= self.duration:
-            GLOBAL_REFERENCE.SceneManager.switch_to(const.SCENE_MAIN_MENU)
+            self.context.scene_manager.switch_to(const.SCENE_MAIN_MENU)
 
     def draw(self, screen: pygame.Surface) -> None:
         screen.fill(const.UI_BG)

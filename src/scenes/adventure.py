@@ -5,7 +5,8 @@ import random
 
 import pygame
 
-from src import GLOBAL_REFERENCE, const, scene_manager
+from src import const, scene_manager
+from src.context import GameContext
 from src.Entities.loader import (
     get_bullet_classes,
     get_plant_classes,
@@ -18,8 +19,8 @@ from src.levels_manager import Level, LevelWave, resolve_zombie_class
 class AdventureScene(scene_manager.Scene):
     NAME = const.SCENE_ADVENTURE
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, context: GameContext) -> None:
+        super().__init__(context)
         self.plant_classes: list = []
         self.zombie_classes: list = []
         self.bullet_classes: list = []
@@ -46,8 +47,8 @@ class AdventureScene(scene_manager.Scene):
 
     @property
     def em(self):
-        # 实体管理器与其它 Manager 一样挂在 GLOBAL_REFERENCE
-        return GLOBAL_REFERENCE.EntitiesManager
+        # 实体管理器经 GameContext 注入，不再依赖全局引用
+        return self.context.entities
 
     def setup(
         self,
@@ -250,13 +251,13 @@ class AdventureScene(scene_manager.Scene):
         if self.game_state != "playing":
             if event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONUP):
                 logging.info("AdventureScene %s 后返回菜单", self.game_state)
-                GLOBAL_REFERENCE.SceneManager.switch_to(const.SCENE_MAIN_MENU)
+                self.context.scene_manager.switch_to(const.SCENE_MAIN_MENU)
             return
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 logging.info("AdventureScene 退出, 当前植物数=%d", len(self.em.plants))
-                GLOBAL_REFERENCE.SceneManager.switch_to(const.SCENE_MAIN_MENU)
+                self.context.scene_manager.switch_to(const.SCENE_MAIN_MENU)
                 return
             # Z：调试刷僵尸（轮流换行）
             if event.key == pygame.K_z:
@@ -396,7 +397,7 @@ class AdventureScene(scene_manager.Scene):
         waves_done = self.wave_index >= len(self.waves)
         if waves_done and not any(self.em.zombies):
             self.game_state = "win"
-            next_lv = GLOBAL_REFERENCE.LevelsManager.next_level(self.level)
+            next_lv = self.context.levels.next_level(self.level)
             if next_lv is not None:
                 self.status_text = f"关卡胜利！下一关 {next_lv.title}"
             else:
@@ -405,7 +406,7 @@ class AdventureScene(scene_manager.Scene):
             self._apply_win_save()
 
     def _apply_win_save(self) -> None:
-        sm = GLOBAL_REFERENCE.SavesManager
+        sm = self.context.saves
         levels = list(sm.get("unlocked_levels") or [])
         if self.level and self.level not in levels:
             levels.append(self.level)

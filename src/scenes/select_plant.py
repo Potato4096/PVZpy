@@ -4,7 +4,8 @@ import logging
 
 import pygame
 
-from src import GLOBAL_REFERENCE, const, scene_manager
+from src import const, scene_manager
+from src.context import GameContext
 from src.Entities.loader import get_plant_classes
 from src.levels_manager import Level, resolve_plant_classes
 
@@ -12,8 +13,8 @@ from src.levels_manager import Level, resolve_plant_classes
 class SelectPlantScene(scene_manager.Scene):
     NAME = const.SCENE_SELECT_PLANT
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, context: GameContext) -> None:
+        super().__init__(context)
         self.all_plants: list = []  # 可选植物类
         self.picked: list = []  # 已选植物类（有序）
         self.item_rects: list[pygame.Rect] = []
@@ -52,14 +53,14 @@ class SelectPlantScene(scene_manager.Scene):
             self._start_game()
 
     def _current_level(self) -> Level | None:
-        lm = GLOBAL_REFERENCE.LevelsManager
-        completed = GLOBAL_REFERENCE.SavesManager.get("unlocked_levels") or []
+        lm = self.context.levels
+        completed = self.context.saves.get("unlocked_levels") or []
         return lm.current_level(completed)
 
     def _unlocked_plants(self) -> list:
         # 过滤存档 unlocked_plants；未配置或滤空时回退全量
         all_plants = get_plant_classes()
-        unlocked = GLOBAL_REFERENCE.SavesManager.get("unlocked_plants")
+        unlocked = self.context.saves.get("unlocked_plants")
         if not unlocked:
             return all_plants
         visible = [c for c in all_plants if c.__name__ in unlocked]
@@ -95,7 +96,7 @@ class SelectPlantScene(scene_manager.Scene):
             return
         level = self.level_obj
         sun = level.default_sun if level is not None else const.START_SUN
-        adv = GLOBAL_REFERENCE.SceneManager.scenes.get(const.SCENE_ADVENTURE)
+        adv = self.context.scene_manager.scenes.get(const.SCENE_ADVENTURE)
         if adv is not None and hasattr(adv, "setup"):
             adv.setup(
                 plant_classes=list(self.picked),
@@ -109,13 +110,13 @@ class SelectPlantScene(scene_manager.Scene):
             sun,
             level.id if level else "-",
         )
-        GLOBAL_REFERENCE.SceneManager.switch_to(const.SCENE_ADVENTURE)
+        self.context.scene_manager.switch_to(const.SCENE_ADVENTURE)
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 logging.info("SelectPlantScene 返回菜单")
-                GLOBAL_REFERENCE.SceneManager.switch_to(const.SCENE_MAIN_MENU)
+                self.context.scene_manager.switch_to(const.SCENE_MAIN_MENU)
             return
 
         if event.type == pygame.MOUSEBUTTONUP and event.button != 1:

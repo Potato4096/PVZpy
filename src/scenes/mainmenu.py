@@ -4,21 +4,15 @@ import logging
 
 import pygame
 
-from src import GLOBAL_REFERENCE, const, scene_manager
-
-
-def _play_click():
-    try:
-        GLOBAL_REFERENCE.AssetsManager.get_sound(const.SFX_BUTTON_CLICK).play()
-    except Exception as e:
-        logging.debug("button click sound failed: %s", e)
+from src import const, scene_manager
+from src.context import GameContext
 
 
 class MainMenu(scene_manager.Scene):
     NAME = const.SCENE_MAIN_MENU
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, context: GameContext) -> None:
+        super().__init__(context)
         self.items = [
             ("Adventure", self._on_start),
             ("Coming Soon", self._on_unimplemented),
@@ -42,18 +36,24 @@ class MainMenu(scene_manager.Scene):
         self.status_text = ""
         self.hover_index = -1
 
+    def _play_click(self) -> None:
+        try:
+            self.context.assets.get_sound(const.SFX_BUTTON_CLICK).play()
+        except Exception as e:
+            logging.debug("button click sound failed: %s", e)
+
     def _on_start(self) -> None:
-        _play_click()
+        self._play_click()
         # 冒险：先去选植物
-        GLOBAL_REFERENCE.SceneManager.switch_to(const.SCENE_SELECT_PLANT)
+        self.context.scene_manager.switch_to(const.SCENE_SELECT_PLANT)
 
     def _on_unimplemented(self) -> None:
-        _play_click()
+        self._play_click()
         self.status_text = "Not implemented yet"
 
     def _on_quit(self) -> None:
-        _play_click()
-        GLOBAL_REFERENCE.Game.running = False
+        self._play_click()
+        self.context.game.running = False
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.MOUSEMOTION:
