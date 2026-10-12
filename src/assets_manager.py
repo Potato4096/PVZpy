@@ -38,21 +38,14 @@ def _default_font():
         raise
 
 
-def _asset_key(asset: Path) -> str:
-    # 资源 key：相对项目根的 posix 路径，与 cwd 解耦
-    resolved = asset.resolve()
-    try:
-        return resolved.relative_to(const.PROJECT_ROOT).as_posix()
-    except ValueError:
-        return resolved.as_posix()
-
-
 class AssetsManager:
     IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
     SOUND_EXTS = {".wav", ".mp3", ".ogg"}
     FONT_EXTS = {".ttf", ".otf"}
     # 暂不解析的格式：reanim 等大体量数据，避免启动刷屏
     SKIP_EXTS = {".reanim", ".xml", ".json", ".txt", ".md", ".ini"}
+    # 目录名命中即跳过：reanim 动画数据（大量 png 帧）不进资源池
+    SKIP_DIRS = {"reanim"}
 
     def __init__(self) -> None:
         DEFAULT_SURFACE = _default_surface()
@@ -62,40 +55,68 @@ class AssetsManager:
         self.surfaces: dict[str, pygame.Surface] = {"default": DEFAULT_SURFACE}
         self.sounds: dict[str, pygame.mixer.Sound] = {"default": DEFAULT_SOUND}
         self.fonts: dict = {"default": DEFAULT_FONT}
+        self._root: Path | None = None
 
     def load_all(self, path) -> None:
+        # 记录资源根目录；资源改为按需加载，启动不再全量 rglob 预加载
         root = Path(path)
         if not root.is_dir():
             logging.warning("资源目录不存在: %s", root)
             return
-        for asset in root.rglob("*"):
-            if not asset.is_file():
-                continue
-            ext = asset.suffix.lower()
-            if ext in self.SKIP_EXTS:
-                continue
-            key = _asset_key(asset)
-            try:
-                if ext in self.IMAGE_EXTS:
-                    self.surfaces[key] = pygame.image.load(asset).convert_alpha()
-                elif ext in self.SOUND_EXTS:
-                    self.sounds[key] = pygame.mixer.Sound(asset)
-                elif ext in self.FONT_EXTS:
-                    self.fonts[key] = pygame.freetype.Font(asset)
-                else:
-                    continue
-            except Exception as e:
-                logging.warning("资源加载失败 %s: %s", asset, e)
-                continue
-            logging.debug("Successfully loaded asset %s", asset)
+        self._root = root.resolve()
         logging.info(
-            "Loaded %d surfaces, %d sounds, %d fonts from %s",
+            "AssetsManager ready (%d default surfaces, %d default sounds, %d default fonts); on-demand loading from %s",
             len(self.surfaces),
             len(self.sounds),
             len(self.fonts),
-            path,
+            self._root,
         )
+
+    def _file_for_key(self, key: str) -> Path | None:
+        # 将 posix key 映射为资源根目录下的文件；root 未就绪/越界/不存在返回 None
+        if self._root is None:
+            return None
+        candidate = (self._root / key).resolve()
+        try:
+            candidate.relative_to(self._root)
+        except ValueError:
+            logging.warning("资源 key 越界，拒绝加载: %s", key)
+            return None
+        if not candidate.is_file():
+            return None
+        return candidate
+
+    def _try_load(self, key: str) -> bool:
+        # 按需加载单个资源；跳过目录（如 reanim 动画帧）与 SKIP_EXTS 格式
+        file = self._file_for_key(key)
+        if file is None:
+            return False
+        parts = file.relative_to(self._root).parts
+        if any(part in self.SKIP_DIRS for part in parts[:-1]):
+            logging.debug("跳过资源目录: %s", file)
+            return False
+        ext = file.suffix.lower()
+        if ext in self.SKIP_EXTS:
+            logging.debug("跳过资源扩展名: %s", file)
+            return False
+        try:
+            if ext in self.IMAGE_EXTS:
+                self.surfaces[key] = pygame.image.load(file).convert_alpha()
+            elif ext in self.SOUND_EXTS:
+                self.sounds[key] = pygame.mixer.Sound(file)
+            elif ext in self.FONT_EXTS:
+                self.fonts[key] = pygame.freetype.Font(file)
+            else:
+                return False
+        except Exception as e:
+            logging.warning("资源加载失败 %s: %s", file, e)
+            return False
+        logging.debug("按需加载资源 %s", file)
+        return True
+
     def get_surface(self, key):
+        if key not in self.surfaces:
+            self._try_load(key)
         if key not in self.surfaces:
             logging.warning("Surface with key '%s' not found. Returning default surface.", key)
             key = "default"
@@ -103,11 +124,15 @@ class AssetsManager:
 
     def get_sound(self, key):
         if key not in self.sounds:
+            self._try_load(key)
+        if key not in self.sounds:
             logging.warning("Sound with key '%s' not found. Returning default sound.", key)
             key = "default"
         return self.sounds[key].copy()
 
     def get_font(self, key):
+        if key not in self.fonts:
+            self._try_load(key)
         if key not in self.fonts:
             logging.warning("Font with key '%s' not found. Returning default font.", key)
             key = "default"
