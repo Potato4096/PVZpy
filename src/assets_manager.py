@@ -42,10 +42,8 @@ class AssetsManager:
     IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
     SOUND_EXTS = {".wav", ".mp3", ".ogg"}
     FONT_EXTS = {".ttf", ".otf"}
-    # 暂不解析的格式：reanim 等大体量数据，避免启动刷屏
+    # 暂不解析的格式：数据/文本类文件不进资源池
     SKIP_EXTS = {".reanim", ".xml", ".json", ".txt", ".md", ".ini"}
-    # 目录名命中即跳过：reanim 动画数据（大量 png 帧）不进资源池
-    SKIP_DIRS = {"reanim"}
 
     def __init__(self) -> None:
         DEFAULT_SURFACE = _default_surface()
@@ -87,13 +85,9 @@ class AssetsManager:
         return candidate
 
     def _try_load(self, key: str) -> bool:
-        # 按需加载单个资源；跳过目录（如 reanim 动画帧）与 SKIP_EXTS 格式
+        # 按需加载单个资源；跳过 SKIP_EXTS 格式
         file = self._file_for_key(key)
         if file is None:
-            return False
-        parts = file.relative_to(self._root).parts
-        if any(part in self.SKIP_DIRS for part in parts[:-1]):
-            logging.debug("跳过资源目录: %s", file)
             return False
         ext = file.suffix.lower()
         if ext in self.SKIP_EXTS:
