@@ -1,18 +1,25 @@
-# 资源 key 与场景名常量。资源 key 为相对资源根（ASSETS_DIR）的 posix 路径，
-# 不重复携带 assets/ 前缀，避免 _file_for_key 拼接出 assets/assets/... 而回退默认。
+# 资源 key 与场景名常量（M3 资源命名空间化）。
+# 资源 key 为「命名空间/类型/资源」posix 路径（如 PVZpy/fonts/pvz2.ttf），
+# 本体命名空间为 PVZpy（大小写保留），对应资源根 assets/PVZpy/；
+# Mod 命名空间为 mods/<modid>/，对应资源根 mods/<modid>/assets/。
+# key 不再携带裸 assets/ 前缀，避免 _file_for_key 拼接出 assets/assets/... 而回退默认。
 # 文件系统路径统一基于 PROJECT_ROOT 构造，不依赖进程 cwd。
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 ASSETS_ROOT = "assets"
+# M3：本体资源命名空间（大小写保留）；迁移后本体资源位于 assets/PVZpy/ 下
+BUILTIN_NAMESPACE = "PVZpy"
 LEVELS_ROOT = "src/Levels"
-IMAGES = "images"
-AUDIO_SFX = "audio/sfx"
-FONTS = "fonts"
+IMAGES = f"{BUILTIN_NAMESPACE}/images"
+AUDIO_SFX = f"{BUILTIN_NAMESPACE}/audio/sfx"
+FONTS = f"{BUILTIN_NAMESPACE}/fonts"
 
 # 文件系统目录（基于项目根）
 ASSETS_DIR = PROJECT_ROOT / ASSETS_ROOT
+# M3：本体命名空间资源根（assets/PVZpy/），由 AssetsManager.load_all 注册
+ASSETS_BUILTIN_DIR = ASSETS_DIR / BUILTIN_NAMESPACE
 LEVELS_DIR = PROJECT_ROOT / LEVELS_ROOT
 SAVES_DIR = PROJECT_ROOT / "saves"
 

@@ -54,7 +54,17 @@ class Game:
             events.GamePreInitPayload(context=self.context),
         )
 
-        self.context.assets.load_all(const.ASSETS_DIR)
+        # M3：为已加载的外部 Mod 注册命名空间资源根（mods/<modid>/assets/），
+        # 使 AssetsManager 可按命名空间解析 Mod 资源（mod 可覆盖原版资源）。
+        for mod_id, entry in self.mod_manager.mods.items():
+            if entry.mod_dir is None:
+                continue
+            mod_assets = entry.mod_dir / "assets"
+            if mod_assets.is_dir():
+                self.context.assets.register_namespace(mod_id, mod_assets)
+
+        # M3：本体资源根为 assets/PVZpy/（本体命名空间 PVZpy）
+        self.context.assets.load_all(const.ASSETS_BUILTIN_DIR)
         self.context.levels.load_all(const.LEVELS_DIR)
         self.context.saves.load_all(const.SAVES_DIR)
 
