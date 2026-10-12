@@ -63,7 +63,8 @@ class AssetsManager:
             return
         self._root = root.resolve()
         logging.info(
-            "AssetsManager ready (%d default surfaces, %d default sounds, %d default fonts); on-demand loading from %s",
+            "AssetsManager ready (%d default surfaces, %d default sounds, "
+            "%d default fonts); on-demand loading from %s",
             len(self.surfaces),
             len(self.sounds),
             len(self.fonts),
@@ -74,6 +75,10 @@ class AssetsManager:
         # 将 posix key 映射为资源根目录下的文件；root 未就绪/越界/不存在返回 None
         if self._root is None:
             return None
+        # 兼容历史 key：key 规范为相对资源根（如 fonts/pvz2.ttf），
+        # 若仍携带 assets/ 前缀则剥离，避免拼接出 assets/assets/... 路径
+        if key.startswith(f"{const.ASSETS_ROOT}/"):
+            key = key[len(f"{const.ASSETS_ROOT}/"):]
         candidate = (self._root / key).resolve()
         try:
             candidate.relative_to(self._root)
@@ -112,7 +117,10 @@ class AssetsManager:
         if key not in self.surfaces:
             self._try_load(key)
         if key not in self.surfaces:
-            logging.warning("Surface with key '%s' not found. Returning default surface.", key)
+            logging.warning(
+                "Surface with key '%s' not found. Returning default surface.",
+                key,
+            )
             key = "default"
         return self.surfaces[key].copy()
 
@@ -120,7 +128,10 @@ class AssetsManager:
         if key not in self.sounds:
             self._try_load(key)
         if key not in self.sounds:
-            logging.warning("Sound with key '%s' not found. Returning default sound.", key)
+            logging.warning(
+                "Sound with key '%s' not found. Returning default sound.",
+                key,
+            )
             key = "default"
         return self.sounds[key].copy()
 
@@ -128,6 +139,9 @@ class AssetsManager:
         if key not in self.fonts:
             self._try_load(key)
         if key not in self.fonts:
-            logging.warning("Font with key '%s' not found. Returning default font.", key)
+            logging.warning(
+                "Font with key '%s' not found. Returning default font.",
+                key,
+            )
             key = "default"
         return self.fonts[key]

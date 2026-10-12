@@ -1,4 +1,5 @@
-# 资源 key 与场景名常量。资源 key 为相对项目根的 posix 路径，
+# 资源 key 与场景名常量。资源 key 为相对资源根（ASSETS_DIR）的 posix 路径，
+# 不重复携带 assets/ 前缀，避免 _file_for_key 拼接出 assets/assets/... 而回退默认。
 # 文件系统路径统一基于 PROJECT_ROOT 构造，不依赖进程 cwd。
 from pathlib import Path
 
@@ -6,9 +7,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 ASSETS_ROOT = "assets"
 LEVELS_ROOT = "src/Levels"
-IMAGES = f"{ASSETS_ROOT}/images"
-AUDIO_SFX = f"{ASSETS_ROOT}/audio/sfx"
-FONTS = f"{ASSETS_ROOT}/fonts"
+IMAGES = "images"
+AUDIO_SFX = "audio/sfx"
+FONTS = "fonts"
 
 # 文件系统目录（基于项目根）
 ASSETS_DIR = PROJECT_ROOT / ASSETS_ROOT
