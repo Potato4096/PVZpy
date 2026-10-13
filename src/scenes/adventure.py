@@ -9,9 +9,9 @@ import pygame
 from src import const, scene_manager
 from src.context import GameContext
 from src.Entities.loader import (
-    get_bullet_classes,
-    get_plant_classes,
-    get_zombie_classes,
+    all_bullet_classes,
+    all_plant_classes,
+    all_zombie_classes,
 )
 from src.Entities.Sun import Sun
 from src.levels_manager import Level, LevelWave, resolve_zombie_class
@@ -86,9 +86,10 @@ class AdventureScene(scene_manager.Scene):
         if self._setup_plants is not None:
             self.plant_classes = self._setup_plants
         else:
-            self.plant_classes = get_plant_classes()
-        self.zombie_classes = get_zombie_classes()
-        self.bullet_classes = get_bullet_classes()
+            # M4：注册表视角（mod 注册的植物生效），未命中/未启用时回退内置
+            self.plant_classes = all_plant_classes(self.context.registry)
+        self.zombie_classes = all_zombie_classes(self.context.registry)
+        self.bullet_classes = all_bullet_classes(self.context.registry)
         self.em.clear()
         self.selected_index = 0
         self.selected_zombie_index = 0
@@ -337,7 +338,8 @@ class AdventureScene(scene_manager.Scene):
                 break
             wave = self.waves[self.wave_index]
             count, row, ztype = wave.count, wave.row, wave.zombie_type
-            zombie_cls = resolve_zombie_class(ztype) or self.selected_zombie_class()
+            # M4：僵尸解析带注册表视角（mod 注册的僵尸可被波次引用）
+            zombie_cls = resolve_zombie_class(ztype, self.context.registry) or self.selected_zombie_class()
             valid = self.spawnable_rows()
             for _ in range(int(count)):
                 if row is not None:
@@ -408,7 +410,7 @@ class AdventureScene(scene_manager.Scene):
             sm.set("unlocked_levels", levels)
             logging.info("解锁关卡: %s", self.level)
         plants = list(sm.get("unlocked_plants") or [])
-        for cls in get_plant_classes():
+        for cls in all_plant_classes(self.context.registry):
             if cls.__name__ not in plants:
                 plants.append(cls.__name__)
                 sm.set("unlocked_plants", plants)

@@ -6,7 +6,7 @@ import pygame
 
 from src import const, scene_manager
 from src.context import GameContext
-from src.Entities.loader import get_plant_classes
+from src.Entities.loader import all_plant_classes
 from src.levels_manager import Level, resolve_plant_classes
 
 
@@ -30,8 +30,8 @@ class SelectPlantScene(scene_manager.Scene):
         self.picked = []
 
         if self.level_obj is not None and not self.level_obj.allow_select_plant:
-            # 本关固定植物：直接带上 DefaultPlants
-            self.all_plants = resolve_plant_classes(self.level_obj.default_plants) or self._unlocked_plants()
+            # 本关固定植物：直接带上 DefaultPlants（M4：注册表视角解析）
+            self.all_plants = resolve_plant_classes(self.level_obj.default_plants, self.context.registry) or self._unlocked_plants()
             self.picked = list(self.all_plants)
             self.status_text = f"{self.level_obj.title} 使用固定植物，即将开始"
             self._auto_start = True
@@ -58,8 +58,8 @@ class SelectPlantScene(scene_manager.Scene):
         return lm.current_level(completed)
 
     def _unlocked_plants(self) -> list:
-        # 过滤存档 unlocked_plants；未配置或滤空时回退全量
-        all_plants = get_plant_classes()
+        # 过滤存档 unlocked_plants；未配置或滤空时回退全量（M4：注册表视角）
+        all_plants = all_plant_classes(self.context.registry)
         unlocked = self.context.saves.get("unlocked_plants")
         if not unlocked:
             return all_plants

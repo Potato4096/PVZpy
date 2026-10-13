@@ -40,7 +40,7 @@ class Game:
             game=self,
             assets=assets_manager.AssetsManager(),
             entities=entities_manager.EntitiesManager(),
-            levels=levels_manager.LevelsManager(),
+            levels=levels_manager.LevelsManager(registry=self.mod_manager.registry),
             saves=saves_manager.SavesManager(),
             scene_manager=scene_manager.SceneManager(),
             mod_manager=self.mod_manager,
@@ -67,6 +67,13 @@ class Game:
         self.context.assets.load_all(const.ASSETS_BUILTIN_DIR)
         self.context.levels.load_all(const.LEVELS_DIR)
         self.context.saves.load_all(const.SAVES_DIR)
+
+        # M4：本体可扩展内容接入 Registry（实体类型、内置关卡），
+        # 游戏逻辑随后经注册表查询；未启用注册表时 register_* 自动跳过。
+        from src.Entities.loader import register_builtin_entities
+
+        register_builtin_entities(self.context.registry)
+        self.context.levels.register_builtin_levels(self.context.registry)
 
         register_builtin_scenes(self.context)
 

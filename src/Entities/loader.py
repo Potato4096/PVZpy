@@ -55,3 +55,77 @@ def get_zombie_classes() -> list:
 
 def get_bullet_classes() -> list:
     return list(_entity_classes()[Bullet])
+
+
+# ---- M4：注册表对接（本体实体接入 Registry，游戏逻辑可查询/回退） ----
+
+def entity_key_for(kind: str, name: str) -> str:
+    """构造实体注册键，如 entity_key_for("plant", "PeaShooter") -> "entity.plant.PeaShooter"。"""
+    from src.mod import keys
+
+    prefix = {
+        "plant": keys.KEY_ENTITY_PLANT,
+        "zombie": keys.KEY_ENTITY_ZOMBIE,
+        "bullet": keys.KEY_ENTITY_BULLET,
+    }.get(kind)
+    if prefix is None:
+        raise ValueError(f"未知实体类型: {kind}")
+    return prefix + name
+
+
+def register_builtin_entities(registry=None) -> None:
+    """M4：将本体全部实体类注册到 Registry（entity.<kind>.<ClassName>）。
+
+    registry 为 None（未启用 mod 系统）时直接返回，保持旧行为不变。
+    """
+    if registry is None:
+        return
+    for cls in get_plant_classes():
+        registry.register(entity_key_for("plant", cls.__name__), cls)
+    for cls in get_zombie_classes():
+        registry.register(entity_key_for("zombie", cls.__name__), cls)
+    for cls in get_bullet_classes():
+        registry.register(entity_key_for("bullet", cls.__name__), cls)
+
+
+def _registry_classes(registry, prefix: str) -> list:
+    """注册表视角的实体类清单（按注册序、去重、排除禁用与非类对象）。"""
+    if registry is None:
+        return []
+    result = []
+    seen = set()
+    for key in registry.enabled_keys:
+        if not key.startswith(prefix):
+            continue
+        val = registry.get(key)
+        if not isinstance(val, type):
+            continue
+        if id(val) in seen:
+            continue
+        seen.add(id(val))
+        result.append(val)
+    return result
+
+
+def all_plant_classes(registry=None) -> list:
+    """M4：注册表视角全部植物类；未启用注册表或无注册项时回退本体内置清单。"""
+    from src.mod import keys
+
+    items = _registry_classes(registry, keys.KEY_ENTITY_PLANT)
+    return items if items else get_plant_classes()
+
+
+def all_zombie_classes(registry=None) -> list:
+    """M4：注册表视角全部僵尸类；未启用注册表或无注册项时回退本体内置清单。"""
+    from src.mod import keys
+
+    items = _registry_classes(registry, keys.KEY_ENTITY_ZOMBIE)
+    return items if items else get_zombie_classes()
+
+
+def all_bullet_classes(registry=None) -> list:
+    """M4：注册表视角全部子弹类；未启用注册表或无注册项时回退本体内置清单。"""
+    from src.mod import keys
+
+    items = _registry_classes(registry, keys.KEY_ENTITY_BULLET)
+    return items if items else get_bullet_classes()

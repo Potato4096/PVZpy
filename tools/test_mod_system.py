@@ -410,5 +410,164 @@ class TestM2EventsAndContext(unittest.TestCase):
             self.fail("事件处理器异常应向外传播以被保护层捕获")
 
 
+class TestM4RegistryIntegration(unittest.TestCase):
+    """M4：本体内置内容接入 Registry（实体 / 关卡）。
+
+    验证点：注册表为 None 或为空时回退本体内置清单；注册表命中时优先
+    返回注册项；关卡查询注册表优先、未命中回退内置。
+    """
+
+    def test_register_builtin_entities_none_registry_safe(self):
+        # registry=None 时应直接返回，不抛异常（未启用 mod 系统保持旧行为）
+        from src.Entities.loader import register_builtin_entities
+
+        register_builtin_entities(None)
+
+    def test_all_plant_classes_without_registry_fallback(self):
+        from src.Entities.loader import all_plant_classes
+
+        items = all_plant_classes(None)
+        self.assertTrue(items)
+        names = {c.__name__ for c in items}
+        self.assertIn("PeaShooter", names)
+
+    def test_all_plant_classes_empty_registry_fallback(self):
+        from src.Entities.loader import all_plant_classes
+
+        reg = Registry()
+        items = all_plant_classes(reg)
+        self.assertTrue(items)
+        names = {c.__name__ for c in items}
+        self.assertIn("PeaShooter", names)
+
+    def test_registry_plant_preferred(self):
+        from src.Entities.loader import all_plant_classes
+        from src.mod.keys import entity_plant_key
+
+        class DummyPlant:
+            pass
+
+        reg = Registry()
+        reg.register(entity_plant_key("DummyPlant"), DummyPlant)
+        items = all_plant_classes(reg)
+        # 注册表有植物项时不再回退内置
+        self.assertEqual(len(items), 1)
+        self.assertIs(items[0], DummyPlant)
+
+    def test_registry_zombie_resolve(self):
+        from src.Entities.loader import all_zombie_classes
+        from src.mod.keys import entity_zombie_key
+
+        class BossZombie:
+            pass
+
+        reg = Registry()
+        reg.register(entity_zombie_key("BossZombie"), BossZombie)
+        items = all_zombie_classes(reg)
+        self.assertEqual(len(items), 1)
+        self.assertIs(items[0], BossZombie)
+
+    def test_registry_bullet_preferred(self):
+        from src.Entities.loader import all_bullet_classes
+        from src.mod.keys import entity_bullet_key
+
+        class MagicBullet:
+            pass
+
+        reg = Registry()
+        reg.register(entity_bullet_key("MagicBullet"), MagicBullet)
+        items = all_bullet_classes(reg)
+        self.assertEqual(len(items), 1)
+        self.assertIs(items[0], MagicBullet)
+
+    def test_entity_key_prefixes(self):
+        from src.mod.keys import (
+            entity_bullet_key,
+            entity_plant_key,
+            entity_zombie_key,
+            level_key,
+        )
+
+        self.assertEqual(entity_plant_key("A"), "entity.plant.A")
+        self.assertEqual(entity_zombie_key("B"), "entity.zombie.B")
+        self.assertEqual(entity_bullet_key("C"), "entity.bullet.C")
+        self.assertEqual(level_key("1-1"), "level.1-1")
+
+    def test_register_builtin_levels_into_registry(self):
+        from src import const
+        from src.levels_manager import LevelsManager
+        from src.mod.keys import level_key
+
+        lm = LevelsManager()
+        lm.load_all(const.LEVELS_DIR)
+        reg = Registry()
+        count = lm.register_builtin_levels(reg)
+        self.assertGreater(count, 0)
+        self.assertTrue(reg.contains(level_key("1-1")))
+
+    def test_get_level_by_id_fallback_builtin(self):
+        from src import const
+        from src.levels_manager import LevelsManager
+
+        lm = LevelsManager()
+        lm.load_all(const.LEVELS_DIR)
+        self.assertIsNotNone(lm.get_level_by_id("1-1"))
+        self.assertIsNone(lm.get_level_by_id("no-such-level"))
+
+    def test_get_level_by_id_registry_priority(self):
+        from src import const
+        from src.levels_manager import Level, LevelsManager
+        from src.mod.keys import level_key
+
+        reg = Registry()
+        lm = LevelsManager(registry=reg)
+        lm.load_all(const.LEVELS_DIR)
+        lm.register_builtin_levels(reg)
+        custom = Level(part=7, level=7, title="Registry Level", rows=[1] * 5)
+        reg.register(level_key("1-1"), custom, replace=True)
+        got = lm.get_level_by_id("1-1")
+        self.assertIsNotNone(got)
+        self.assertEqual(got.title, "Registry Level")
+
+    def test_list_levels_merges_registry(self):
+        from src import const
+        from src.levels_manager import Level, LevelsManager
+        from src.mod.keys import level_key
+
+        reg = Registry()
+        lm = LevelsManager(registry=reg)
+        lm.load_all(const.LEVELS_DIR)
+        lm.register_builtin_levels(reg)
+        custom = Level(part=8, level=8, title="Custom", rows=[1] * 5)
+        reg.register(level_key("8-8"), custom)
+        ids = {lv.id for lv in lm.list_levels()}
+        self.assertIn("8-8", ids)
+        self.assertIn("1-1", ids)
+
+    def test_resolve_zombie_class_registry(self):
+        from src.levels_manager import resolve_zombie_class
+        from src.mod.keys import entity_zombie_key
+
+        class TinyZombie:
+            pass
+
+        reg = Registry()
+        reg.register(entity_zombie_key("TinyZombie"), TinyZombie)
+        self.assertIs(resolve_zombie_class("TinyZombie", reg), TinyZombie)
+
+    def test_resolve_plant_classes_registry(self):
+        from src.levels_manager import resolve_plant_classes
+        from src.mod.keys import entity_plant_key
+
+        class GoldenSunflower:
+            pass
+
+        reg = Registry()
+        reg.register(entity_plant_key("GoldenSunflower"), GoldenSunflower)
+        items = resolve_plant_classes(["GoldenSunflower"], reg)
+        self.assertEqual(len(items), 1)
+        self.assertIs(items[0], GoldenSunflower)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

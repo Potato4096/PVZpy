@@ -157,9 +157,11 @@ def _parse_level(data: dict, path: Path) -> Level | None:
 class LevelsManager:
     # 主线关卡表；levels 按 id 排序
 
-    def __init__(self) -> None:
+    def __init__(self, registry=None) -> None:
         self.levels: dict[str, Level] = {}
         self.root: Path | None = None
+        # M4：可选注册表；mod 关卡经注册表注入，查询时优先注册表、未命中回退内置
+        self.registry = registry
 
     def load_all(self, path) -> None:
         root = Path(path)
@@ -184,14 +186,63 @@ class LevelsManager:
             logging.debug("已加载关卡 %s (%s)", level.id, level.title)
         logging.info("Loaded %d levels from %s", len(self.levels), root)
 
+    def _registry_level(self, level_id: str) -> Level | None:
+        """M4：从注册表按 level.<id> 取关卡（支持 Level 实例或可解析 dict）。"""
+        if self.registry is None:
+            return None
+        from src.mod.keys import level_key
+
+        try:
+            raw = self.registry.get(level_key(level_id))
+        except Exception:
+            return None
+        if isinstance(raw, Level):
+            return raw
+        if isinstance(raw, dict):
+            lv = _parse_level(raw, Path(level_id + ".json"))
+            if lv is not None:
+                lv.path = f"registry:{level_key(level_id)}"
+            return lv
+        return None
+
     def list_levels(self) -> list[Level]:
-        return sorted(self.levels.values(), key=lambda lv: (lv.part, lv.level))
+        # M4：注册表关卡（level.*）与内置关卡合并，同 id 时注册表优先
+        items = {lv.id: lv for lv in self.levels.values()}
+        if self.registry is not None:
+            from src.mod.keys import KEY_LEVEL
+
+            for key in self.registry.enabled_keys:
+                if not key.startswith(KEY_LEVEL):
+                    continue
+                lv = self._registry_level(key[len(KEY_LEVEL):])
+                if lv is not None:
+                    items[lv.id] = lv
+        return sorted(items.values(), key=lambda lv: (lv.part, lv.level))
 
     def get_level(self, part: int, level: int) -> Level | None:
-        return self.levels.get(f"{part}-{level}")
+        return self.get_level_by_id(f"{part}-{level}")
 
     def get_level_by_id(self, level_id: str) -> Level | None:
+        # M4：先查注册表，未命中回退本体内置关卡
+        lv = self._registry_level(level_id)
+        if lv is not None:
+            return lv
         return self.levels.get(level_id)
+
+    def register_builtin_levels(self, registry=None) -> int:
+        """M4：将已加载的本体关卡注册到 Registry（level.<id>）。
+
+        registry 为 None（未启用 mod 系统）时跳过；返回新增注册条数。
+        """
+        if registry is None:
+            return 0
+        from src.mod.keys import level_key
+
+        count = 0
+        for lv in self.list_levels():
+            if registry.register(level_key(lv.id), lv):
+                count += 1
+        return count
 
     def first_level(self) -> Level | None:
         items = self.list_levels()
@@ -221,10 +272,10 @@ class LevelsManager:
         return items[-1]
 
 
-def resolve_plant_classes(names: list[str]) -> list:
-    from src.Entities.loader import get_plant_classes
+def resolve_plant_classes(names: list[str], registry=None) -> list:
+    from src.Entities.loader import all_plant_classes
 
-    by_name = {c.__name__: c for c in get_plant_classes()}
+    by_name = {c.__name__: c for c in all_plant_classes(registry)}
     result = []
     for name in names:
         cls = by_name.get(name)
@@ -235,12 +286,12 @@ def resolve_plant_classes(names: list[str]) -> list:
     return result
 
 
-def resolve_zombie_class(name: str | None):
+def resolve_zombie_class(name: str | None, registry=None):
     if not name:
         return None
-    from src.Entities.loader import get_zombie_classes
+    from src.Entities.loader import all_zombie_classes
 
-    for cls in get_zombie_classes():
+    for cls in all_zombie_classes(registry):
         if cls.__name__ == name:
             return cls
     logging.warning("未知僵尸类: %s", name)
