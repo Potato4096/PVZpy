@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "PVZpy_Debugger",
+  "friendly_name": "PVZpy Debugger",
+  "version": "1.0.0",
+  "version_code": 1,
+  "authors": ["PVZpy Developers"],
+  "description": "F3 切换调试显示：游戏版本、游戏时钟、最近事件、mod 列表、FPS 与 FPS 曲线（类似 Minecraft 调试界面）。",
+  "website": "",
+  "entry_points": {"main": "debugger_mod.DebuggerMod"},
+  "depends": ["pvzpy"]
+}
