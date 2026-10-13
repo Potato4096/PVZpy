@@ -124,6 +124,9 @@ class Game:
     def draw(self, screen: pygame.Surface) -> None:
         screen.fill((0, 0, 0))
         self.context.scene_manager.draw(screen)
+        # 绘制完成、flip 前发布：mod 覆盖层（如调试 UI）在此绘制，由本体统一 flip
+        # 一次显示，避免 mod 自行 flip 与本体构成双 flip 竞争导致画面闪烁。
+        self._publish_safe(events.GAME_PRE_FLIP, events.GamePreFlipPayload(game=self))
         pygame.display.flip()
 
     # ---- 事件发布（带保护） ----

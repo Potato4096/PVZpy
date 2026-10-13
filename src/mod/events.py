@@ -20,6 +20,9 @@ GAME_START = "game_start"
 GAME_FRAME = "game_frame"
 """每一帧更新/渲染完成后发布，携带 dt（秒）。"""
 
+GAME_PRE_FLIP = "game_pre_flip"
+"""每帧绘制完成后、display.flip 之前发布，供覆盖层（如调试 UI）融入本体渲染管线。"""
+
 GAME_STOP = "game_stop"
 """游戏主循环退出后、存档与 Mod 卸载前发布。"""
 
@@ -43,6 +46,14 @@ class GameStartPayload:
 @dataclass(frozen=True)
 class GameFramePayload:
     """game_frame 事件载荷。"""
+
+    dt: float = 0.0
+    game: Any = None
+
+
+@dataclass(frozen=True)
+class GamePreFlipPayload:
+    """game_pre_flip 事件载荷。"""
 
     dt: float = 0.0
     game: Any = None
