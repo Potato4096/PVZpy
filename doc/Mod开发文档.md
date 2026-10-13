@@ -24,7 +24,7 @@ PVZpy 内置一套轻量级 Mod 系统（M1~M5 分阶段落地），允许第三
 | `src/mod/events.py` | 内置生命周期事件名常量与事件 Payload |
 | `src/mod/keys.py` | 本体可扩展内容在注册表中的键前缀约定与拼接函数 |
 
-内置 `pvzpy` Mod 作为**第一个**被加载的 Mod（元数据内置、代码不移动），外部 Mod 通常声明 `depends: ["pvzpy"]` 表示依赖本体。
+内置 `pvzpy` Mod 作为**第一个**被加载的 Mod（元数据外置于 `src/Vanilla.json`，见 2.1；代码不移动），外部 Mod 通常声明 `depends: ["pvzpy"]` 表示依赖本体。**启动顺序**：本体（pvzpy）最先初始化 → 外部 Mod 按 `mods/` 目录名字典序初始化 → 游戏随后启动（`run`）；每次启动加载顺序一致。
 
 ---
 
@@ -57,6 +57,30 @@ mods/
 >     └── PVZpy/images/mod.png                   # 覆盖原版 PVZpy/images/mod.png
 > ```
 
+### 2.1 本体配置：`src/Vanilla.json`
+
+游戏本体同样以"模组"形式登记，其元数据**外置**在项目根 `src/Vanilla.json`（`ModManager.VANILLA_JSON_PATH`）。`ModManager.boot` 启动时读取该文件构建内置条目（`id = "pvzpy"`、资源命名空间 `PVZpy`），不再依赖代码内硬编码元数据（代码中的内置常量仅作读取失败时的回退）。该文件**不含 `entry_points.main`**——本体代码不经 mod 入口实例化，ModManager 对本体走内置适配，仅读取元数据与资源声明。
+
+```json
+{
+  "schema_version": 1,
+  "id": "pvzpy",
+  "friendly_name": "PVZpy",
+  "version": "1.0.0",
+  "version_code": 1,
+  "authors": ["PVZpy Developers"],
+  "description": "PVZpy 游戏本体（内置模组）",
+  "website": "",
+  "resources": {
+    "assets": "assets/PVZpy",
+    "levels": "src/Levels",
+    "entities": "src/Entities"
+  }
+}
+```
+
+> 本体资源已命名空间化为 `assets/PVZpy`，故 `assets` 显式声明为 `assets/PVZpy`；`levels` / `entities` 指向本体实际目录。`resources` 字段说明见第 3.2 节与 7.0 节。
+
 ---
 
 ## 3. mod.json 字段说明
@@ -82,6 +106,7 @@ mods/
 | `description` | string | `""` | 描述。 |
 | `website` | string | `""` | 主页。 |
 | `depends` | string[] | `[]` | 依赖的 Mod id 列表（当前仅记录，不强制解析依赖图）。 |
+| `resources` | object | `{}` | **可选**。各类型资源相对路径声明，键限定为 `assets` / `levels` / `entities`，值为相对该 Mod 目录（本体相对项目根）的 posix 路径。键取值非法或值非字符串 → `ModLoadError`。未声明的类型走默认约定（见 7.0 节）。 |
 
 > 注：当前实现**不做依赖解析/冲突检测**，`depends` 作为元数据记录；推荐至少声明 `["pvzpy"]`。
 
@@ -101,6 +126,8 @@ mods/
   "depends": ["pvzpy"]
 }
 ```
+
+> 该示例**未声明** `resources`，`assets` / `levels` / `entities` 分别自动走默认约定 `assets/`、`src/Levels/`、`src/Entities/`（相对 mod 目录）。
 
 ---
 
@@ -128,14 +155,18 @@ mods/
 
 ```
 boot()
-├─ 1. 内置 pvzpy Mod 最先加载（make_builtin_entry）
+├─ 1. 读取 src/Vanilla.json 构建内置 pvzpy Mod（本体最先加载；读取失败回退内置默认元数据）
 ├─ 2. 扫描 mods/ 按目录名排序加载外部 Mod（load_mod_from_dir）
 │     ├─ ModLoadError → 跳过并打 warning（不中断其它 Mod）
 │     └─ id 重复 → 跳过并打 warning
-├─ 3. 按加载顺序逐个调用 on_pre_init(manager)     → 状态 PRE_INIT
-├─ 4. 按加载顺序逐个调用 on_init(manager)          → 状态 ACTIVE
+├─ 3. 计算各 Mod 三类资源目录（assets/levels/entities，声明或默认）并收集分发列表，
+│     由游戏装配阶段交给 AssetsManager / LevelsManager / EntitiesManager（见 7.0）
+├─ 4. 按加载顺序逐个调用 on_pre_init(manager)     → 状态 PRE_INIT
+├─ 5. 按加载顺序逐个调用 on_init(manager)          → 状态 ACTIVE
 └─ booted = True
 ```
+
+- 加载顺序**每次启动一致**：本体优先 → 外部 Mod 按 `mods/` 目录名字典序；`manager.loaded` 与资源分发表均按此顺序。
 
 - 回调**未实现**：视为空操作，直接置为成功状态。
 - 回调**抛异常**：该 Mod 状态置为 `FAILED`、记录 `error`，`log.exception` 记录，**不中断其它 Mod**（见 `ModManager._call_callback`）。
@@ -269,12 +300,35 @@ def on_init(self, manager) -> None:
 
 ## 7. 资源系统
 
+### 7.0 资源目录声明与分发（`resources`）
+
+每个 Mod（含本体）可通过 `mod.json` / `src/Vanilla.json` 的 `resources` 字段声明三类资源的**相对路径**（相对该 Mod 所在目录；本体相对项目根）。未声明的类型走**默认约定**：
+
+| 类型 | 键 | 默认约定（未声明时） |
+|---|---|---|
+| 通用资源（图片 / 音频 / 字体） | `assets` | `<mod_dir>/assets` |
+| 关卡目录 | `levels` | `<mod_dir>/src/Levels` |
+| 实体目录 | `entities` | `<mod_dir>/src/Entities` |
+
+`ModManager.boot` 完成加载后按**加载顺序**（本体优先 + 目录序）收集三类路径，可通过以下 API 获取：
+
+- `manager.resource_dirs(kind)`：`kind ∈ {"assets","levels","entities"}`，返回该类型的路径列表 `List[Path]`；
+- `manager.resource_dirs_by_mod()`：返回 `Dict[str, Dict[str, Path]]`（`mod_id → {kind: Path}`）。
+
+游戏侧 `Game.__init__` 装配阶段分发：
+
+- `AssetsManager`：对每个 Mod 的 `assets` 路径调用 `register_namespace(mod_id, assets_dir)`（本体为 `assets/PVZpy`），使 Mod 资源可按命名空间解析并覆盖原版；
+- `LevelsManager.load_roots([...])`：依次加载各 Mod 的 `levels` 目录，同名关卡 id 后加载者覆盖；
+- `EntitiesManager(resource_dirs=[...])`：接收各 Mod 的 `entities` 目录（当前实体类仍以源码导入包收集为主，目录参数供扩展预留）。
+
+**向后兼容**：未声明 `resources` 的既有 Mod（如 `mods/example_mod`、`mods/PVZpy_Debugger`）自动走默认约定，无需修改其 `mod.json`。
+
 ### 7.1 命名空间
 
 `AssetsManager` 以**命名空间**组织资源根。常量 `const.BUILTIN_NAMESPACE = "PVZpy"`，本体资源根为 `const.ASSETS_BUILTIN_DIR`（`assets/PVZpy/`）。
 
 - `load_all(path)`：注册**本体命名空间** `PVZpy` 到资源根，资源**按需加载**（不再全量预加载）。
-- `register_namespace(namespace, root)`：注册命名空间资源根；游戏启动时对每个外部 Mod 调用 `register_namespace(mod_id, mods/<mod_id>/assets)`（`Game.__init__`）。同一命名空间重复注册**以后者为准**；命名空间区分大小写原样保留。
+- `register_namespace(namespace, root)`：注册命名空间资源根；游戏装配阶段按 7.0 分发对各 Mod 调用 `register_namespace(mod_id, <assets 路径>)`。同一命名空间重复注册**以后者为准**；命名空间区分大小写原样保留。
 
 ### 7.2 资源 key 与解析规则（`_file_for_key`）
 

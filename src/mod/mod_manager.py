@@ -15,15 +15,26 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from .event_bus import EventBus
-from .loader import ModEntry, ModLoadError, find_mod_dirs, load_mod_from_dir, make_builtin_entry
-from .mod_info import ModInfo, ModState
+from .loader import (
+    ModEntry,
+    ModLoadError,
+    find_mod_dirs,
+    load_mod_from_dir,
+    make_builtin_entry,
+    parse_mod_json,
+)
+from .mod_info import RESOURCE_TYPES, ModInfo, ModState
 from .registry import Registry
 
 log = logging.getLogger(__name__)
 
 BUILTIN_PVZPY_ID = "pvzpy"
 
-# 内置 pvzpy Mod 元数据（M1：元数据内置，本体代码不移动）。
+# Vanilla.json 位置：src/Vanilla.json（本体外置元数据）。
+VANILLA_JSON_PATH = Path(__file__).resolve().parents[2] / "src" / "Vanilla.json"
+
+# 内置 pvzpy Mod 元数据（回退默认：Vanilla.json 缺失/解析失败时使用，
+# 正常路径由 src/Vanilla.json 提供）。
 BUILTIN_PVZPY_INFO = ModInfo(
     schema_version=1,
     id=BUILTIN_PVZPY_ID,
@@ -80,12 +91,16 @@ class ModManager:
     # ---- 生命周期 ----
 
     def boot(self) -> None:
-        """启动 Mod 系统：加载内置 pvzpy -> 扫描加载外部 Mod -> 执行回调。"""
+        """启动 Mod 系统：加载内置 pvzpy（读 src/Vanilla.json）-> 扫描加载外部 Mod（目录序）-> 执行回调。"""
         if self._booted:
             return
 
-        # 1) 内置 pvzpy 最先加载
-        builtin = make_builtin_entry(BUILTIN_PVZPY_INFO, _BuiltinPVZMod)
+        # 1) 内置 pvzpy 最先加载（本体优先：元数据/资源声明来自 src/Vanilla.json）
+        builtin = make_builtin_entry(
+            self._load_builtin_info(),
+            _BuiltinPVZMod,
+            base_dir=Path(__file__).resolve().parents[2],
+        )
         self._register_entry(builtin)
 
         # 2) 扫描 mods 目录，按目录名排序加载外部 Mod
@@ -119,7 +134,30 @@ class ModManager:
         """按 id（区分大小写）取 Mod 条目。"""
         return self.mods.get(mod_id)
 
+    # ---- 资源分发 ----
+
+    def resource_dirs(self, kind: str) -> List[Path]:
+        """按类型收集所有已加载 Mod（本体优先 + 外部目录序）的资源目录列表。
+
+        kind 取 assets / levels / entities 之一。
+        """
+        if kind not in RESOURCE_TYPES:
+            raise ValueError(f"未知资源类型: {kind}（可选: {RESOURCE_TYPES}）")
+        return [entry.resource_dirs[kind] for entry in self.loaded if kind in entry.resource_dirs]
+
+    def resource_dirs_by_mod(self) -> Dict[str, Dict[str, Path]]:
+        """所有已加载 Mod 的 {mod_id: {资源类型: 实际目录}}（本体优先 + 外部目录序）。"""
+        return {entry.info.id: dict(entry.resource_dirs) for entry in self.loaded}
+
     # ---- 内部 ----
+
+    def _load_builtin_info(self) -> ModInfo:
+        """读取 src/Vanilla.json 作为内置 pvzpy 元数据；失败时回退硬编码默认。"""
+        try:
+            return parse_mod_json(VANILLA_JSON_PATH)
+        except ModLoadError:
+            log.warning("读取 Vanilla.json 失败，回退内置默认元数据: %s", VANILLA_JSON_PATH)
+            return BUILTIN_PVZPY_INFO
 
     def _register_entry(self, entry: ModEntry) -> None:
         self.mods[entry.info.id] = entry

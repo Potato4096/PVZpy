@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "pvzpy",
+  "friendly_name": "PVZpy",
+  "version": "1.0.0",
+  "version_code": 1,
+  "authors": ["PVZpy Developers"],
+  "description": "PVZpy 本体，作为内置 Mod 最先加载（仅元数据与资源声明，本体代码不走 mod 入口实例化）。",
+  "website": "",
+  "depends": [],
+  "resources": {
+    "assets": "assets/PVZpy",
+    "levels": "src/Levels",
+    "entities": "src/Entities"
+  }
+}

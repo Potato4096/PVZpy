@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from collections.abc import Iterator
 
 import pygame
@@ -20,7 +21,10 @@ def _eat_collide(zombie: Zombie, plant: Plant) -> bool:
 class EntitiesManager:
     # 用 Sprite.Group 管理实体，碰撞用 pygame.sprite.*
 
-    def __init__(self) -> None:
+    def __init__(self, resource_dirs=None) -> None:
+        # B：接收 ModManager 分发的实体资源目录列表（本体优先 + 外部目录序）。
+        # 当前实体类由 src/Entities/loader.py 导入收集，目录列表先持有供后续扩展。
+        self.resource_dirs: list[Path] = [Path(p) for p in (resource_dirs or [])]
         self.plants: pygame.sprite.Group = pygame.sprite.Group()
         self.zombies: pygame.sprite.Group = pygame.sprite.Group()
         self.bullets: pygame.sprite.Group = pygame.sprite.Group()

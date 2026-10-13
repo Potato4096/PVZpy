@@ -6,6 +6,10 @@
 3. 注册表内容生效：ExamplePlant 植物与 9-9 关卡注册且可从注册表视角查询
 4. 资源覆盖生效：PVZpy/images/mod.png 命中 mod 覆盖（16x16）；modID 命名空间资源可解析
 5. 60 帧主循环完整跑完（GAME_FRAME 发布次数 >= 60）
+6. 本体外置：src/Vanilla.json 存在且 id=pvzpy、ModManager 读取其元数据（非硬编码默认）
+7. 启动顺序：本体（pvzpy）最先初始化，外部 mod 在其后按目录序
+8. 资源分发：本体 assets=assets/PVZpy 被收集；未声明 resources 的 mod 走默认约定；
+   声明自定义路径的 mod 按声明目录分发
 
 运行方式（项目根目录，SDL dummy）：
     python tools/smoke_mod_system.py
@@ -34,7 +38,8 @@ from src.game import Game  # noqa: E402
 from src.levels_manager import LevelsManager  # noqa: E402
 from src.mod import events  # noqa: E402
 from src.mod.keys import entity_plant_key, level_key  # noqa: E402
-from src.mod.mod_manager import ModManager  # noqa: E402
+from src.mod.loader import parse_mod_json  # noqa: E402
+from src.mod.mod_manager import VANILLA_JSON_PATH, ModManager  # noqa: E402
 
 FRAMES = 60
 FAILURES = []
@@ -103,6 +108,72 @@ def main() -> int:
     check("modID 命名空间资源可解析 24x24", card.get_size() == (24, 24))
 
     check(f"60 帧主循环完整（实际 {frame_count['n']} 帧）", frame_count["n"] >= FRAMES)
+
+    # 7) M6 检查点：本体外置 Vanilla.json + 启动顺序 + 资源分发
+    print("== M6 冒烟检查点（Vanilla.json / 启动顺序 / 资源分发）==")
+    check("src/Vanilla.json 存在", VANILLA_JSON_PATH.is_file())
+    vanilla_info = parse_mod_json(VANILLA_JSON_PATH)
+    check("Vanilla.json id=pvzpy", vanilla_info.id == "pvzpy")
+    check(
+        "Vanilla.json 声明 assets=assets/PVZpy",
+        vanilla_info.resources.get("assets") == "assets/PVZpy",
+    )
+    builtin_info = manager.builtin.info
+    check(
+        "ModManager 读取 Vanilla.json 元数据（非硬编码默认）",
+        builtin_info.friendly_name == vanilla_info.friendly_name
+        and builtin_info.resources.get("assets") == "assets/PVZpy",
+    )
+    check("启动顺序：本体最先初始化", manager.loaded[0].id == "pvzpy")
+    loaded_ids = [e.id for e in manager.loaded]
+    check(
+        "启动顺序：example_mod 位于本体之后",
+        loaded_ids.index("example_mod") > loaded_ids.index("pvzpy"),
+    )
+    builtin_dirs = manager.builtin.resource_dirs
+    check(
+        "本体 assets 分发为 assets/PVZpy",
+        builtin_dirs["assets"] == const.ASSETS_BUILTIN_DIR.resolve(),
+    )
+    check(
+        "本体 levels 分发为 src/Levels",
+        builtin_dirs["levels"] == const.LEVELS_DIR.resolve(),
+    )
+    ex_entry = manager.mods["example_mod"]
+    check(
+        "未声明 resources 的 mod 走默认约定 assets/",
+        ex_entry.resource_dirs["assets"] == (ex_entry.mod_dir / "assets").resolve(),
+    )
+    # 声明自定义资源路径的 mod：临时 boot 一个只含该 mod 的 ModManager 验证分发
+    tmp_mods_root = Path(tempfile.mkdtemp(prefix="pvzpy_modres_"))
+    tmp_mod_dir = tmp_mods_root / "MyResMod"
+    tmp_mod_dir.mkdir()
+    (tmp_mod_dir / "mod.json").write_text(
+        '{"schema_version":1,"id":"MyResMod","friendly_name":"Res Mod",'
+        '"version":"1.0.0","entry_points":{"main":"res_mod.ResMain"},'
+        '"resources":{"assets":"my_assets","levels":"my_levels","entities":"my_entities"}}',
+        encoding="utf-8",
+    )
+    (tmp_mod_dir / "res_mod.py").write_text(
+        "class ResMain:\n"
+        "    def on_pre_init(self, manager): pass\n"
+        "    def on_init(self, manager): pass\n",
+        encoding="utf-8",
+    )
+    tmp_manager = ModManager(mods_dir=tmp_mods_root)
+    tmp_manager.boot()
+    tmp_dirs = tmp_manager.resource_dirs("assets")
+    check(
+        "声明自定义 assets 路径的 mod 按声明目录分发",
+        len(tmp_dirs) == 2
+        and tmp_dirs[0] == const.ASSETS_BUILTIN_DIR.resolve()
+        and tmp_dirs[1] == (tmp_mod_dir / "my_assets").resolve(),
+    )
+    check(
+        "声明自定义 levels/entities 路径同样分发",
+        tmp_manager.resource_dirs("levels")[1] == (tmp_mod_dir / "my_levels").resolve()
+        and tmp_manager.resource_dirs("entities")[1] == (tmp_mod_dir / "my_entities").resolve(),
+    )
 
     print()
     if FAILURES:

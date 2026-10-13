@@ -15,7 +15,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
+
+
+# 资源类型（三类）：assets=通用图片/音频/字体，levels=关卡目录，entities=实体目录。
+RESOURCE_TYPES = ("assets", "levels", "entities")
+
+# 未在 mod.json / Vanilla.json 中显式声明时的默认相对路径（相对 mod 目录 / 项目根）。
+DEFAULT_RESOURCE_DIRS = {
+    "assets": "assets",
+    "levels": "src/Levels",
+    "entities": "src/Entities",
+}
 
 
 class ModState(Enum):
@@ -35,7 +46,7 @@ class ModInfo:
 
     字段与 mod.json 一一对应：
     schema_version / id / friendly_name / version / version_code /
-    authors / description / website / entry_points / depends
+    authors / description / website / entry_points / depends / resources
     """
 
     schema_version: int = 1
@@ -48,6 +59,7 @@ class ModInfo:
     website: str = ""
     entry_points: "EntryPoints" = field(default_factory=lambda: EntryPoints())
     depends: List[str] = field(default_factory=list)
+    resources: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

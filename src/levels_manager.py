@@ -167,6 +167,18 @@ class LevelsManager:
         root = Path(path)
         self.root = root
         self.levels.clear()
+        self._load_root(root)
+
+    def load_roots(self, roots) -> None:
+        """按顺序加载多个关卡根目录（本体优先，后加载的 mod 可覆盖同 id 关卡）。"""
+        self.levels.clear()
+        roots = [Path(p) for p in roots]
+        if roots:
+            self.root = roots[0]
+        for root in roots:
+            self._load_root(root)
+
+    def _load_root(self, root: Path) -> None:
         if not root.is_dir():
             logging.warning("关卡目录不存在: %s", root)
             return

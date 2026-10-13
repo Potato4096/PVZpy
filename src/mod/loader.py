@@ -16,9 +16,14 @@ import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
-from .mod_info import ModInfo, ModState
+from .mod_info import (
+    DEFAULT_RESOURCE_DIRS,
+    RESOURCE_TYPES,
+    ModInfo,
+    ModState,
+)
 
 MOD_JSON_NAME = "mod.json"
 
@@ -37,6 +42,9 @@ class ModEntry:
     instance: Any = None                    # 入口类实例
     state: ModState = ModState.DISCOVERED
     error: Optional[str] = None
+    resource_dirs: Dict[str, Path] = field(default_factory=dict)
+    # 各资源类型 -> 实际目录（绝对 Path）。
+    # 外部 Mod 相对 mod_dir 解析；内置 Mod（Vanilla.json）相对项目根解析。
 
     @property
     def id(self) -> str:
@@ -91,7 +99,28 @@ def parse_mod_json(mod_json_path: Path) -> ModInfo:
         website=str(raw.get("website", "")),
         entry_points=_entry_points(main_entry),
         depends=_str_list(raw.get("depends")),
+        resources=_resources(raw.get("resources"), mod_json_path),
     )
+
+
+def _resources(value: Any, mod_json_path: Path) -> Dict[str, str]:
+    """解析 resources 字段为 {资源类型: 相对路径}。
+
+    - 缺省 / None -> {}（未声明，走默认约定）；
+    - 必须是对象；键仅限 assets/levels/entities；值为非空字符串相对路径。
+    """
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ModLoadError(f"resources 必须是对象: {mod_json_path}")
+    resources: Dict[str, str] = {}
+    for key, rel in value.items():
+        if key not in RESOURCE_TYPES:
+            raise ModLoadError(f"resources 含未知资源类型 {key!r}（可选: {RESOURCE_TYPES}）: {mod_json_path}")
+        if not isinstance(rel, str) or not rel:
+            raise ModLoadError(f"resources.{key} 必须是非空字符串相对路径: {mod_json_path}")
+        resources[key] = rel
+    return resources
 
 
 def _entry_points(main_entry: Any) -> Any:
@@ -143,6 +172,20 @@ def load_entry_point(info: ModInfo, mod_dir: Path) -> Any:
         ) from exc
 
 
+def compute_resource_dirs(info: ModInfo, base_dir: Path) -> Dict[str, Path]:
+    """按 ModInfo.resources 计算各资源类型实际目录（绝对 Path）。
+
+    - 已声明的类型：base_dir / 声明的相对路径；
+    - 未声明的类型：base_dir / 默认约定路径（DEFAULT_RESOURCE_DIRS）。
+    外部 Mod 的 base_dir 为其 mod 目录；内置 Mod 的 base_dir 为项目根。
+    """
+    dirs: Dict[str, Path] = {}
+    for kind in RESOURCE_TYPES:
+        rel = info.resources.get(kind) or DEFAULT_RESOURCE_DIRS[kind]
+        dirs[kind] = (base_dir / rel).resolve()
+    return dirs
+
+
 def load_mod_from_dir(mod_dir: Path) -> ModEntry:
     """从目录加载一个外部 Mod（解析元数据 + 导入实例化）。"""
     info = parse_mod_json(mod_dir / MOD_JSON_NAME)
@@ -153,13 +196,20 @@ def load_mod_from_dir(mod_dir: Path) -> ModEntry:
         entry_path=mod_dir / MOD_JSON_NAME,
         instance=instance,
         state=ModState.LOADED,
+        resource_dirs=compute_resource_dirs(info, mod_dir),
     )
 
 
-def make_builtin_entry(info: ModInfo, entry_cls: type) -> ModEntry:
-    """构造内置 Mod 条目（元数据内置，代码不移动，无需 sys.path 注入）。"""
+def make_builtin_entry(info: ModInfo, entry_cls: type, base_dir: Optional[Path] = None) -> ModEntry:
+    """构造内置 Mod 条目（元数据内置，代码不移动，无需 sys.path 注入）。
+
+    传入 base_dir 时按项目根计算 resource_dirs（Vanilla.json 相对项目根）。
+    """
     try:
         instance = entry_cls()
     except Exception as exc:  # noqa: BLE001
         raise ModLoadError(f"内置 Mod {info.id} 实例化失败: {exc!r}") from exc
-    return ModEntry(info=info, instance=instance, state=ModState.LOADED)
+    entry = ModEntry(info=info, instance=instance, state=ModState.LOADED)
+    if base_dir is not None:
+        entry.resource_dirs = compute_resource_dirs(info, base_dir)
+    return entry

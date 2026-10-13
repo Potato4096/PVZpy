@@ -30,6 +30,7 @@ from src.mod.event_bus import EventBus  # noqa: E402
 from src.mod import events  # noqa: E402
 from src.mod.loader import (  # noqa: E402
     ModLoadError,
+    compute_resource_dirs,
     find_mod_dirs,
     load_entry_point,
     load_mod_from_dir,
@@ -39,6 +40,7 @@ from src.mod.mod_info import ModInfo, ModState  # noqa: E402
 from src.mod.mod_manager import (  # noqa: E402
     BUILTIN_PVZPY_ID,
     BUILTIN_PVZPY_INFO,
+    VANILLA_JSON_PATH,
     ModManager,
 )
 from src.mod.registry import Registry  # noqa: E402
@@ -90,12 +92,14 @@ class TempModsMixin:
     def tearDown(self):
         shutil.rmtree(self._tmp, ignore_errors=True)
 
-    def make_sample_mod(self, mod_id="SampleMod", main_cls="SampleMain"):
+    def make_sample_mod(self, mod_id="SampleMod", main_cls="SampleMain", resources=None):
         mod_dir = self.mods_dir / mod_id
         mod_dir.mkdir()
         data = dict(SAMPLE_MOD_JSON)
         data["id"] = mod_id
         data["entry_points"] = {"main": f"sample_mod.{main_cls}"}
+        if resources is not None:
+            data["resources"] = resources
         (mod_dir / "mod.json").write_text(
             json.dumps(data, ensure_ascii=False), encoding="utf-8"
         )
@@ -304,8 +308,10 @@ class TestModManagerBoot(TempModsMixin, unittest.TestCase):
         manager.boot()
         self.assertEqual([e.id for e in manager.loaded], ["pvzpy", "SampleMod"])
         self.assertEqual(manager.mods["SampleMod"].state, ModState.ACTIVE)
-        # 内置元数据不依赖 mods 目录文件
-        self.assertIs(manager.mods[BUILTIN_PVZPY_ID].info, BUILTIN_PVZPY_INFO)
+        # 内置元数据不依赖 mods 目录文件，且来自 src/Vanilla.json（读文件而非硬编码默认）
+        info = manager.mods[BUILTIN_PVZPY_ID].info
+        self.assertEqual(info.id, BUILTIN_PVZPY_ID)
+        self.assertEqual(info.resources.get("assets"), "assets/PVZpy")
 
     def test_external_mod_callbacks_invoked(self):
         self.make_sample_mod()
@@ -659,13 +665,197 @@ class TestM5ExampleMod(unittest.TestCase):
         assets.load_all(const.ASSETS_BUILTIN_DIR)
         for mod_id, entry in manager.mods.items():
             if entry.mod_dir is not None:
-                assets.register_namespace(mod_id, entry.mod_dir / "assets")
+                mod_assets = entry.resource_dirs.get("assets")
+                if mod_assets and mod_assets.is_dir():
+                    assets.register_namespace(mod_id, mod_assets)
         # M5 覆盖：PVZpy/images/mod.png 应命中 mod 的 16x16 纯红图
         surf = assets.get_surface(f"{const.BUILTIN_NAMESPACE}/images/mod.png")
         self.assertEqual(surf.get_size(), (16, 16))
         # modID 命名空间资源可解析
         card = assets.get_surface("example_mod/images/example_plant_card.png")
         self.assertEqual(card.get_size(), (24, 24))
+
+
+class TestM6VanillaAndResources(TempModsMixin, unittest.TestCase):
+    """M6：本体外置 Vanilla.json 与 mod 资源分发。
+
+    验证点：
+    - src/Vanilla.json 存在、id=pvzpy、显式声明 assets=assets/PVZpy；
+    - ModManager.boot 读取 Vanilla.json（非硬编码默认），本体最先加载，
+      外部 mod 按目录名字典序加载（启动顺序本体优先 + 目录序）；
+    - mod.json resources 字段解析（声明路径 / 未声明走默认约定）；
+    - ModEntry.resource_dirs 计算（外部 mod 相对 mod 目录，内置相对项目根）；
+    - ModManager.resource_dirs / resource_dirs_by_mod 按类型收集分发；
+    - LevelsManager.load_roots 多根加载、后加载覆盖同 id；
+    - EntitiesManager 接收 resource_dirs 列表。
+    """
+
+    def test_vanilla_json_exists_and_id_pvzpy(self):
+        self.assertTrue(VANILLA_JSON_PATH.is_file())
+        info = parse_mod_json(VANILLA_JSON_PATH)
+        self.assertEqual(info.id, BUILTIN_PVZPY_ID)
+        self.assertEqual(info.resources.get("assets"), "assets/PVZpy")
+
+    def test_boot_uses_vanilla_json_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = ModManager(Path(tmp) / "mods")
+            manager.boot()
+        info = manager.builtin.info
+        self.assertEqual(info.id, BUILTIN_PVZPY_ID)
+        # 资源声明来自 Vanilla.json（硬编码默认 BUILTIN_PVZPY_INFO.resources 为空）
+        self.assertEqual(info.resources.get("assets"), "assets/PVZpy")
+        self.assertEqual(info.friendly_name, "PVZpy")
+
+    def test_boot_builtin_first_then_sorted_external(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mods_dir = Path(tmp) / "mods"
+            mods_dir.mkdir()
+            for mid in ("BMod", "AMod"):
+                d = mods_dir / mid
+                d.mkdir()
+                data = dict(SAMPLE_MOD_JSON)
+                data["id"] = mid
+                (d / "mod.json").write_text(json.dumps(data), encoding="utf-8")
+                (d / "sample_mod.py").write_text(SAMPLE_MAIN_PY, encoding="utf-8")
+            manager = ModManager(mods_dir)
+            manager.boot()
+        self.assertEqual([e.id for e in manager.loaded], ["pvzpy", "AMod", "BMod"])
+
+    def test_builtin_resource_dirs_from_project_root(self):
+        from src import const
+
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = ModManager(Path(tmp) / "mods")
+            manager.boot()
+        dirs = manager.builtin.resource_dirs
+        self.assertEqual(dirs["assets"], (PROJECT_ROOT / "assets" / "PVZpy").resolve())
+        self.assertEqual(dirs["levels"], const.LEVELS_DIR.resolve())
+        self.assertEqual(dirs["entities"], (PROJECT_ROOT / "src" / "Entities").resolve())
+
+    def test_parse_resources_field(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "mod.json"
+            path.write_text(
+                json.dumps(
+                    {"id": "X", "resources": {"assets": "res/a", "levels": "lv", "entities": "ent"}}
+                ),
+                encoding="utf-8",
+            )
+            info = parse_mod_json(path)
+        self.assertEqual(info.resources, {"assets": "res/a", "levels": "lv", "entities": "ent"})
+
+    def test_parse_resources_missing_defaults_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "mod.json"
+            path.write_text(json.dumps({"id": "X"}), encoding="utf-8")
+            info = parse_mod_json(path)
+        self.assertEqual(info.resources, {})
+
+    def test_parse_resources_invalid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "mod.json"
+            path.write_text(json.dumps({"id": "X", "resources": "oops"}), encoding="utf-8")
+            with self.assertRaises(ModLoadError):
+                parse_mod_json(path)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "mod.json"
+            path.write_text(
+                json.dumps({"id": "X", "resources": {"audio": "snd"}}),
+                encoding="utf-8",
+            )
+            with self.assertRaises(ModLoadError):
+                parse_mod_json(path)
+
+    def test_compute_resource_dirs_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            info = ModInfo(id="X")
+            dirs = compute_resource_dirs(info, base)
+        self.assertEqual(dirs["assets"], (base / "assets").resolve())
+        self.assertEqual(dirs["levels"], (base / "src" / "Levels").resolve())
+        self.assertEqual(dirs["entities"], (base / "src" / "Entities").resolve())
+
+    def test_compute_resource_dirs_declared(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            info = ModInfo(id="X", resources={"assets": "custom/img", "levels": "custom/levels"})
+            dirs = compute_resource_dirs(info, base)
+        self.assertEqual(dirs["assets"], (base / "custom" / "img").resolve())
+        self.assertEqual(dirs["levels"], (base / "custom" / "levels").resolve())
+        # 未声明类型仍走默认约定
+        self.assertEqual(dirs["entities"], (base / "src" / "Entities").resolve())
+
+    def test_entry_resource_dirs_defaults(self):
+        mod_dir = self.make_sample_mod(mod_id="PlainMod")
+        entry = load_mod_from_dir(mod_dir)
+        self.assertEqual(entry.resource_dirs["assets"], (mod_dir / "assets").resolve())
+        self.assertEqual(entry.resource_dirs["levels"], (mod_dir / "src" / "Levels").resolve())
+        self.assertEqual(entry.resource_dirs["entities"], (mod_dir / "src" / "Entities").resolve())
+
+    def test_entry_resource_dirs_declared(self):
+        mod_dir = self.make_sample_mod(
+            mod_id="DeclaredMod",
+            resources={"assets": "custom/a", "levels": "custom/l", "entities": "custom/e"},
+        )
+        entry = load_mod_from_dir(mod_dir)
+        self.assertEqual(entry.resource_dirs["assets"], (mod_dir / "custom" / "a").resolve())
+        self.assertEqual(entry.resource_dirs["levels"], (mod_dir / "custom" / "l").resolve())
+        self.assertEqual(entry.resource_dirs["entities"], (mod_dir / "custom" / "e").resolve())
+
+    def test_manager_resource_dirs_collects_builtin_first(self):
+        mod_dir = self.make_sample_mod(mod_id="CMod", resources={"assets": "my/assets"})
+        manager = ModManager(self.mods_dir)
+        manager.boot()
+        asset_dirs = manager.resource_dirs("assets")
+        self.assertEqual(len(asset_dirs), 2)
+        self.assertEqual(asset_dirs[0], (PROJECT_ROOT / "assets" / "PVZpy").resolve())
+        self.assertEqual(asset_dirs[1], (mod_dir / "my" / "assets").resolve())
+        level_dirs = manager.resource_dirs("levels")
+        self.assertEqual(level_dirs[0], (PROJECT_ROOT / "src" / "Levels").resolve())
+        self.assertEqual(level_dirs[1], (mod_dir / "src" / "Levels").resolve())
+
+    def test_resource_dirs_by_mod(self):
+        self.make_sample_mod(mod_id="DMod", resources={"assets": "a1"})
+        manager = ModManager(self.mods_dir)
+        manager.boot()
+        by_mod = manager.resource_dirs_by_mod()
+        self.assertEqual(list(by_mod.keys()), ["pvzpy", "DMod"])
+        self.assertIn("assets", by_mod["pvzpy"])
+        self.assertIn("levels", by_mod["DMod"])
+
+    def test_resource_dirs_unknown_kind_raises(self):
+        manager = ModManager(self.mods_dir)
+        with self.assertRaises(ValueError):
+            manager.resource_dirs("audio")
+
+    def test_levels_load_roots_merge_and_override(self):
+        from src.levels_manager import LevelsManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root1 = Path(tmp) / "root1"
+            root2 = Path(tmp) / "root2"
+            root1.mkdir()
+            root2.mkdir()
+            (root1 / "1-1.json").write_text(
+                json.dumps({"part": 1, "level": 1, "title": "Base"}), encoding="utf-8"
+            )
+            (root2 / "1-1.json").write_text(
+                json.dumps({"part": 1, "level": 1, "title": "Mod"}), encoding="utf-8"
+            )
+            lm = LevelsManager()
+            lm.load_roots([root1, root2])
+            lv = lm.get_level_by_id("1-1")
+            self.assertEqual(lv.title, "Mod")
+            self.assertEqual(len(lm.levels), 1)
+
+    def test_entities_manager_receives_resource_dirs(self):
+        from src.entities_manager import EntitiesManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            em = EntitiesManager(resource_dirs=[d / "Entities", d / "mod"])
+        self.assertEqual(len(em.resource_dirs), 2)
+        self.assertEqual(em.resource_dirs[0], d / "Entities")
 
 
 if __name__ == "__main__":

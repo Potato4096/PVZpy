@@ -15,7 +15,7 @@ from src import (
 )
 from src.context import GameContext
 from src.mod import events
-from src.mod.mod_manager import ModManager
+from src.mod.mod_manager import BUILTIN_PVZPY_ID, ModManager
 from src.scenes import register_builtin_scenes
 
 
@@ -35,11 +35,14 @@ class Game:
             mod_manager = self._create_default_mod_manager()
         self.mod_manager = mod_manager
 
-        # 构造应用上下文：显式持有各管理器与场景管理器，向下游依赖注入
+        # 构造应用上下文：显式持有各管理器与场景管理器，向下游依赖注入。
+        # B：entities 管理器接收所有已加载 mod（本体优先 + 外部目录序）的实体目录列表。
         self.context = GameContext(
             game=self,
             assets=assets_manager.AssetsManager(),
-            entities=entities_manager.EntitiesManager(),
+            entities=entities_manager.EntitiesManager(
+                resource_dirs=self.mod_manager.resource_dirs("entities")
+            ),
             levels=levels_manager.LevelsManager(registry=self.mod_manager.registry),
             saves=saves_manager.SavesManager(),
             scene_manager=scene_manager.SceneManager(),
@@ -54,18 +57,32 @@ class Game:
             events.GamePreInitPayload(context=self.context),
         )
 
-        # M3：为已加载的外部 Mod 注册命名空间资源根（mods/<modid>/assets/），
-        # 使 AssetsManager 可按命名空间解析 Mod 资源（mod 可覆盖原版资源）。
+        # B：为已加载的外部 Mod 注册命名空间资源根（assets 类型，来自 resources
+        # 声明或默认 mods/<modid>/assets/），使 AssetsManager 可按命名空间解析 Mod
+        # 资源（mod 可覆盖原版资源）。
         for mod_id, entry in self.mod_manager.mods.items():
             if entry.mod_dir is None:
                 continue
-            mod_assets = entry.mod_dir / "assets"
-            if mod_assets.is_dir():
+            mod_assets = entry.resource_dirs.get("assets")
+            if mod_assets and mod_assets.is_dir():
                 self.context.assets.register_namespace(mod_id, mod_assets)
 
-        # M3：本体资源根为 assets/PVZpy/（本体命名空间 PVZpy）
-        self.context.assets.load_all(const.ASSETS_BUILTIN_DIR)
-        self.context.levels.load_all(const.LEVELS_DIR)
+        # B：本体资源根来自 src/Vanilla.json 的 resources.assets 声明
+        # （assets/PVZpy，即本体命名空间 PVZpy 的资源根）。
+        builtin_entry = self.mod_manager.mods.get(BUILTIN_PVZPY_ID) or self.mod_manager.builtin
+        builtin_assets = (
+            builtin_entry.resource_dirs["assets"]
+            if builtin_entry and builtin_entry.resource_dirs.get("assets")
+            else const.ASSETS_BUILTIN_DIR
+        )
+        self.context.assets.load_all(builtin_assets)
+
+        # B：关卡资源根按类型分发（本体优先 + 外部目录序，mod 关卡可覆盖本体同 id 关卡）。
+        level_roots = self.mod_manager.resource_dirs("levels")
+        if level_roots:
+            self.context.levels.load_roots(level_roots)
+        else:
+            self.context.levels.load_all(const.LEVELS_DIR)
         self.context.saves.load_all(const.SAVES_DIR)
 
         # M4：本体可扩展内容接入 Registry（实体类型、内置关卡），
