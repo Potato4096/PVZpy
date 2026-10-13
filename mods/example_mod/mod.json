@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "example_mod",
+  "friendly_name": "Example Mod",
+  "version": "1.0.0",
+  "version_code": 1,
+  "authors": ["PVZpy Developers"],
+  "description": "M5 示例 Mod：演示事件订阅、注册表注册自定义植物与关卡、资源覆盖原版的全链路。",
+  "website": "",
+  "entry_points": {"main": "example_mod.ExampleMod"},
+  "depends": ["pvzpy"]
+}

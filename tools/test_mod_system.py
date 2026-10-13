@@ -569,5 +569,104 @@ class TestM4RegistryIntegration(unittest.TestCase):
         self.assertIs(items[0], GoldenSunflower)
 
 
+class TestM5ExampleMod(unittest.TestCase):
+    """M5：示例 mod 全链路（事件订阅、注册表注册、资源覆盖）。
+
+    使用项目真实 mods/example_mod 目录验证：ModManager 扫描加载 → 入口类
+    生命周期回调 → 事件总线订阅生效 → Registry 注册自定义内容生效 →
+    AssetsManager 解析 modID 命名空间资源并允许覆盖原版 PVZpy 资源。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+        import pygame
+
+        pygame.init()
+        pygame.mixer.init()
+        # dummy 环境下 image.convert_alpha 需要显示表面，创建最小虚拟窗口
+        pygame.display.set_mode((1, 1))
+
+    @classmethod
+    def tearDownClass(cls):
+        import pygame
+
+        pygame.quit()
+
+    def _boot(self):
+        from src import const
+        from src.mod.mod_manager import ModManager
+
+        manager = ModManager(const.PROJECT_ROOT / "mods")
+        manager.boot()
+        import example_mod
+
+        example_mod.EVENTS_SEEN.clear()
+        return manager
+
+    def test_example_mod_loaded_by_manifest(self):
+        from src import const
+        from src.mod.mod_manager import ModManager
+
+        manager = ModManager(const.PROJECT_ROOT / "mods")
+        manager.boot()
+        self.assertTrue(manager.booted)
+        self.assertIn("example_mod", manager.mods)
+        self.assertEqual(manager.mods["example_mod"].state, ModState.ACTIVE)
+
+    def test_example_mod_registers_custom_content(self):
+        from src.Entities.loader import all_plant_classes
+        from src.mod.keys import entity_plant_key, level_key
+
+        manager = self._boot()
+        reg = manager.registry
+        self.assertTrue(reg.contains(entity_plant_key("ExamplePlant")))
+        self.assertTrue(reg.contains(level_key("9-9")))
+        classes = all_plant_classes(reg)
+        self.assertIn("ExamplePlant", {c.__name__ for c in classes})
+
+    def test_example_mod_event_subscription(self):
+        from src.mod import events
+
+        manager = self._boot()
+        bus = manager.event_bus
+        bus.publish(events.GAME_PRE_INIT, events.GamePreInitPayload())
+        bus.publish(events.GAME_START, events.GameStartPayload(context=object()))
+        import example_mod
+
+        self.assertIn("game_pre_init", example_mod.EVENTS_SEEN)
+        self.assertIn(("game_start", True), example_mod.EVENTS_SEEN)
+
+    def test_example_mod_registry_level_visible(self):
+        from src import const
+        from src.levels_manager import LevelsManager
+
+        manager = self._boot()
+        lm = LevelsManager(registry=manager.registry)
+        lm.load_all(const.LEVELS_DIR)
+        lv = lm.get_level_by_id("9-9")
+        self.assertIsNotNone(lv)
+        self.assertEqual(lv.title, "Example Mod 关卡")
+        self.assertIn("ExamplePlant", lv.default_plants)
+
+    def test_example_mod_asset_override(self):
+        from src import const
+        from src.assets_manager import AssetsManager
+
+        manager = self._boot()
+        assets = AssetsManager()
+        assets.load_all(const.ASSETS_BUILTIN_DIR)
+        for mod_id, entry in manager.mods.items():
+            if entry.mod_dir is not None:
+                assets.register_namespace(mod_id, entry.mod_dir / "assets")
+        # M5 覆盖：PVZpy/images/mod.png 应命中 mod 的 16x16 纯红图
+        surf = assets.get_surface(f"{const.BUILTIN_NAMESPACE}/images/mod.png")
+        self.assertEqual(surf.get_size(), (16, 16))
+        # modID 命名空间资源可解析
+        card = assets.get_surface("example_mod/images/example_plant_card.png")
+        self.assertEqual(card.get_size(), (24, 24))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

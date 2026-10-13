@@ -47,6 +47,10 @@ class AssetsManager:
     解析」查找：先查已注册的 Mod 命名空间资源根（mods/<modid>/assets/，按注册
     顺序），再查本体命名空间根（assets/PVZpy/）——即 Mod 资源可覆盖原版资源。
     带命名空间的 key 直接映射到对应资源根，互不干扰。
+
+    M5：带「本体命名空间」（PVZpy）的 key 允许被 Mod 覆盖——若
+    mods/<modid>/assets/PVZpy/<tail> 存在则优先返回（仍按 Mod 注册顺序），
+    未命中再回退本体 assets/PVZpy/<tail>。
     """
 
     IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
@@ -114,6 +118,12 @@ class AssetsManager:
         # 拆出命名空间段：首段命中已注册命名空间 => 按命名空间定位
         head, sep, tail = key.partition("/")
         if sep and head in self._namespaces:
+            # M5：本体命名空间（PVZpy）资源允许 Mod 覆盖：
+            # mods/<modid>/assets/PVZpy/<tail> 优先于本体 assets/PVZpy/<tail>
+            if head == const.BUILTIN_NAMESPACE:
+                override = self._builtin_override(head, tail, key)
+                if override is not None:
+                    return override
             return self._resolve_in_root(self._namespaces[head], tail, key)
 
         # 默认命名空间解析：Mod 根优先（覆盖原版），本体根兜底
@@ -124,6 +134,20 @@ class AssetsManager:
         roots: List[Path] = [*mod_roots, self._namespaces[const.BUILTIN_NAMESPACE]]
         for root in roots:
             found = self._resolve_in_root(root, key, key)
+            if found is not None:
+                return found
+        return None
+
+    def _builtin_override(self, namespace: str, tail: str, display_key: str) -> Path | None:
+        """在已注册的 Mod 资源根下查找 <BUILTIN_NAMESPACE>/<tail> 覆盖文件。
+
+        M5 专用：mods/<modid>/assets/PVZpy/<tail> 覆盖本体同名资源；
+        遍历顺序与默认命名空间解析一致（先注册的 Mod 优先）。
+        """
+        for ns, root in self._namespaces.items():
+            if ns == const.BUILTIN_NAMESPACE:
+                continue
+            found = self._resolve_in_root(root / namespace, tail, display_key)
             if found is not None:
                 return found
         return None
