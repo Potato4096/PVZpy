@@ -32,23 +32,22 @@ log = logging.getLogger(__name__)
 # 调试键
 DEBUG_KEY = pygame.K_F3
 
-# 面板与配色（沿用 const.UI_* 相近风格，避免依赖本体模块以保持 mod 独立）
-PANEL_BG = (18, 22, 28, 220)
-PANEL_BORDER = (70, 85, 105)
-PANEL_TEXT = (230, 230, 230)
-PANEL_TEXT_DIM = (150, 155, 165)
-PANEL_ACCENT = (76, 160, 90)
+# 面板与配色（无背景、纯白文字，仅渲染文字与 FPS 曲线）
+PANEL_BORDER = (90, 100, 120)
+PANEL_TEXT = (255, 255, 255)
+PANEL_TEXT_DIM = (225, 225, 225)
+PANEL_ACCENT = (255, 255, 255)
 FPS_CURVE_COLOR = (120, 220, 120)
 
-FPS_CURVE_W = 260          # 曲线宽
-FPS_CURVE_H = 56           # 曲线高
+FPS_CURVE_W = 320          # 曲线宽
+FPS_CURVE_H = 72           # 曲线高
 FPS_HISTORY_LEN = 120      # FPS 曲线最近 N 帧
 EVENT_LOG_LEN = 8          # 最近事件条数
 FPS_EMA_ALPHA = 0.15       # 瞬时 fps 的 EMA 平滑系数
 PANEL_MARGIN = 10
-LINE_HEIGHT = 18
-TITLE_FONT_SIZE = 15
-BODY_FONT_SIZE = 13
+LINE_HEIGHT = 28
+TITLE_FONT_SIZE = 24
+BODY_FONT_SIZE = 20
 
 
 class DebuggerMod:
@@ -201,20 +200,8 @@ class DebuggerMod:
             mod_lines = self._mod_lines()
             ev_lines = list(self._event_log)
 
-            panel_x = PANEL_MARGIN
-            panel_y = PANEL_MARGIN
-            panel_w = min(380, w - 2 * PANEL_MARGIN)
-            # 行数 = 标题 + 版本/时钟/FPS + 事件标题 + 事件行 + mod 标题 + mod 行 + 曲线
-            row_count = 3 + 1 + len(ev_lines) + 1 + len(mod_lines) + 1
-            panel_h = 14 + row_count * LINE_HEIGHT + FPS_CURVE_H
-
-            panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-            panel.fill(PANEL_BG)
-            pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), 1)
-            surface.blit(panel, (panel_x, panel_y))
-
-            x = panel_x + 10
-            y = panel_y + 8
+            x = PANEL_MARGIN
+            y = PANEL_MARGIN
 
             def text(s, font=None, color=None):
                 nonlocal y
@@ -243,7 +230,7 @@ class DebuggerMod:
 
             # FPS 曲线
             text("FPS 曲线 (EMA):", None, PANEL_TEXT_DIM)
-            self._draw_fps_curve(surface, x, y, panel_w - 20)
+            self._draw_fps_curve(surface, x, y, FPS_CURVE_W)
             y += FPS_CURVE_H
 
             self._render_called += 1
