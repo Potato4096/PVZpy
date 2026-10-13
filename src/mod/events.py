@@ -23,6 +23,10 @@ GAME_FRAME = "game_frame"
 GAME_PRE_FLIP = "game_pre_flip"
 """每帧绘制完成后、display.flip 之前发布，供覆盖层（如调试 UI）融入本体渲染管线。"""
 
+GAME_EVENT_LOOP = "game_event_loop"
+"""每帧事件循环处理（event_loop 消费 pygame 事件队列）之前发布，供 mod 用
+pygame.event.peek() 非破坏性地查看待处理事件（不消费队列）。"""
+
 GAME_STOP = "game_stop"
 """游戏主循环退出后、存档与 Mod 卸载前发布。"""
 
@@ -56,6 +60,13 @@ class GamePreFlipPayload:
     """game_pre_flip 事件载荷。"""
 
     dt: float = 0.0
+    game: Any = None
+
+
+@dataclass(frozen=True)
+class GameEventLoopPayload:
+    """game_event_loop 事件载荷（event_loop 消费 pygame 事件队列前发布）。"""
+
     game: Any = None
 
 

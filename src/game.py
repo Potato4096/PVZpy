@@ -112,6 +112,11 @@ class Game:
         pygame.quit()
 
     def event_loop(self) -> None:
+        # 消费前发布：mod 可在此用 pygame.event.peek() 非破坏性查看待处理事件。
+        self._publish_safe(
+            events.GAME_EVENT_LOOP,
+            events.GameEventLoopPayload(game=self),
+        )
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
