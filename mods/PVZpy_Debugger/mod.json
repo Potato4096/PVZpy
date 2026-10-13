@@ -2,11 +2,11 @@
   "schema_version": 1,
   "id": "PVZpy_Debugger",
   "friendly_name": "PVZpy Debugger",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "version_code": 1,
-  "authors": ["PVZpy Developers"],
-  "description": "F3 切换调试显示：游戏版本、游戏时钟、最近事件、mod 列表、FPS 与 FPS 曲线（类似 Minecraft 调试界面）。",
-  "website": "",
+  "authors": ["Potato4096"],
+  "description": "按桌面旧版（PVZpy-Debugger-main）重写的调试器：左上角单列黄字调试信息（版本/FPS/Tick/Scene/Mouse/Click/Mods/User）+ 右下角 FPS 折线图，F3 切换显示。内部基于当前 mod 系统事件总线与生命周期实现。",
+  "website": "https://github.com/Potato4096/PVZpy-Debugger",
   "entry_points": {"main": "debugger_mod.DebuggerMod"},
   "depends": ["pvzpy"]
 }
